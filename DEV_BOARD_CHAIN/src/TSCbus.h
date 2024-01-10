@@ -15,6 +15,7 @@ const int OPC_GET_DATA          = 0x61 ; // length is variable
 const int OPC_CONF_IO           = 0x62 ;
 const int OPC_CONF_SERVO        = 0x76 ;
 const int OPC_GET_MODULE_TYPE   = 0x82 ;
+const int OPC_SET_DATA          = 0x91 ; // length is variable
 
 extern uint8 receiveMessage() ;
 
@@ -41,11 +42,30 @@ private:
     uint8   lastOPC ;
     uint8   moduleCount ;
     uint8   messageCounter ;
-
+    uint8   length ;
+    uint8   index ;
     uint8   checkChecksum() ;
+    void    processMessage() ;
 
     Message message ;
 };
+
+class GPIO
+{
+public:
+    //   slave ID  pin   iodir
+    GPIO( uint8, uint8, uint8 ) ;
+    void    init() ;
+    void    set( uint8 ) ;      // set 1 or 0
+    void    get() ;             // issues an input read command, not yet sure how to process. Update state in background or callback function?
+    void    setPWM( uint8 ) ;   // sets dutycycle
+
+private:
+    uint8   slaveID ;
+    uint8   pinNumber ;
+    uint8   iodir ;
+    uint8   state ; // contains active state (or dutycycle) of GPIO pin
+}
 
 
 
