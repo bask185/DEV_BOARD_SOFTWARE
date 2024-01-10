@@ -151,7 +151,8 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     if( Serial.available() == 0 ) return ;
 
     uint8 b = Serial.read() ; // remove '0'
-
+    uint8 pinNumber ;
+    uint8 pinState ;
 
     switch (state)
     {
@@ -160,7 +161,7 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         messageCounter = 1 ;               // reset the byte counter
         lastOPC        = 0 ;               // reset flag
 
-        printNumberln( "MY ID: ", myID ) ;
+        // printNumberln( "MY ID: ", myID ) ;
 
         state = getModuleCount ;
         b ++ ;                          // increment the slave ID byte before relaying
@@ -169,16 +170,16 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
     case getModuleCount:                // get the amount of modules from master. This is used to count the opcodes so we know when the message is finished
         moduleCount = b ;
-        printNumberln( "module count: ", moduleCount ) ;
+        // printNumberln( "module count: ", moduleCount ) ;
         if( moduleCount == 0 )
         {
             state = waitFirstByte ;
-            Serial.println("module count is 0, waiting for new message");
+            // Serial.println("module count is 0, waiting for new message");
         }
         else
         {
             state  = getOPC ;
-            Serial.println("going to get OPCODE");
+            // Serial.println("going to get OPCODE");
         }
         goto relayByte ;
 
@@ -189,20 +190,20 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         message.length = b & 0x0F ;                 // get the length for this OPCODE message
         message.index =  1 ;                        // OPCODE has index 1 so..
 
-        printNumber_( "OPCODE: ", message.OPC ) ;
-        printNumberln( "length: ", message.length ) ;
+        // printNumber_( "OPCODE: ", message.OPC ) ;
+        // printNumberln( "length: ", message.length ) ;
 
         if( message.OPC == OPC_GET_INPUT  
         ||  message.OPC == OPC_GET_ANALOG 
         ||  message.OPC == OPC_GET_DATA )  // Slave must SEND information
         {
             state = transmittData ;
-            Serial.println("going to transmitt");
+            // Serial.println("going to transmitt");
         }
         else                                // slave must RECEIVE information
         {
             state = receiveData ;
-            Serial.println("going to receive");
+            // Serial.println("going to receive");
         }
         goto relayByte ;
 
@@ -211,11 +212,11 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         if( messageCounter == myID )            // if this is my OPCODE
         {
             message.payload[ message.index ] = b ;
-            printNumberln( "receiving payload: ", b ) ;
+            // printNumberln( "receiving payload: ", b ) ;
         }
         else
         {
-            printNumberln( "not my ID ", messageCounter ) ;
+            // printNumberln( "not my ID ", messageCounter ) ;
         }
         if( ++ message.index == message.length ) state = getChecksum ;
         goto relayByte ;
@@ -224,37 +225,42 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     case transmittData:
         if( messageCounter == myID )            // if this is my OPCODE
         { 
+            pinNumber = b >> 1 ;
+            // printNumber_("Reading from pin: ", pinNumber);
+            message.payload[ message.index ] = digitalRead(pinNumber) ;
+            pinState = message.payload[ message.index ] ;
+            // printNumberln("state: ",  pinState);
+
             b = message.payload[ message.index ] ; // slave must send something. Fill the byte
-            printNumberln( "sending payload: ", b ) ;
+            // printNumberln( "sending payload: ", b ) ;
         }
         else
         {
-            printNumberln( "not my ID ", messageCounter ) ;
+            // printNumberln( "not my ID ", messageCounter ) ;
         }
-        message.index  ++ ;
         if( ++ message.index == message.length ) state = getChecksum ;
         goto relayByte ;
 
 
     case getChecksum:
         message.checksum = b ;
-        printNumberln( "comparing checksum: ", b ) ;
-        if( !checkChecksum() ) Serial.print("wrong checksum bruh.. fock off :-P");
+        // printNumberln( "comparing checksum: ", b ) ;
+        if( !checkChecksum() ) // Serial.print("wrong checksum bruh.. fock off :-P");
 
         if( messageCounter ++ == moduleCount ) // This was the last opcode we had to process, we are finished
         {
-            Serial.println("message relayed") ;
+            // Serial.println("message relayed") ;
             state = waitFirstByte ;
         }
         else
         {
-            Serial.println("getting next OPCODE") ;
+            // Serial.println("getting next OPCODE") ;
             state = getOPC ;
         }// fallthru
 
     relayByte:
-        // Serial.write(b) ; Serial.write(' ') ;
-        // Serial.println(b) ;
+        Serial.write(b) ; 
+        // // Serial.println(b) ;
         break ;
     }
 }

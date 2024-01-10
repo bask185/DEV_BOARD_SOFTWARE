@@ -124,6 +124,7 @@ void setup()
     //     if( state == 0 ) nPCF ++ ;          // PCF found, increment counter.
     //     else break ;
     // }
+    pinMode(2, OUTPUT ) ;
 }
 
 void loop()
