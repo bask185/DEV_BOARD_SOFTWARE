@@ -175,7 +175,7 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     //if( Serial.available() == 0 ) return ;
 
     //uint8 b = Serial.read() ; // remove '0'
-    Serial.print("\r\nBYTE RECEIVED: ");Serial.print(b,HEX);Serial.write(' ');
+    // Serial.print("\r\nBYTE RECEIVED: ");Serial.print(b,HEX);Serial.write(' ');
     uint8 pinNumber ;
     uint8 pinState ;
 
@@ -183,8 +183,8 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     {
     case wait4ID:                    // wait for first byte
         myID = b ;                         // the first byte of the message carries my ID
-        Serial.print("STATE wait4ID  ");
-        printNumberln("received ID: ", myID );
+        // Serial.print("STATE wait4ID  ");
+        // printNumberln("received ID: ", myID );
 
         messageCounter = 1 ;               // reset the byte counter
 
@@ -195,8 +195,8 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
     case getMessageCount:                // get the amount of messages inside this package
         messageCount = b ;
-        Serial.print("STATE getMessageCount  ");
-        printNumberln("received message count: ", messageCount );
+        // Serial.print("STATE getMessageCount  ");
+        // printNumberln("received message count: ", messageCount );
 
         if( messageCount == 0 ) state = wait4ID ; // if the module count is 0, the master is inspecting the bus and can count slaves.
         else                    state = getOPCODE ;        // otherwise, get the message length
@@ -206,9 +206,9 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
 // SLAVE NODE
     case getOPCODE:
-        Serial.print("STATE getOPCODE  ");
-        Serial.print("received OPCODE: ");Serial.print(b, HEX) ;
-        printNumberln("  with length: ", b & 0x0F  );
+        // Serial.print("STATE getOPCODE  ");
+        // Serial.print("received OPCODE: ");Serial.print(b, HEX) ;
+        // printNumberln("  with length: ", b & 0x0F  );
 
         index =  0 ;                        // reset index
         length = b & 0x0F ;                 // get the length for this OPCODE message
@@ -226,17 +226,17 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         goto relayByte ;
 
     case notMyBytes:
-        Serial.print("STATE notMyBytes  ");
-        printNumberln("discarding byte @ index : ", index );
+        // Serial.print("STATE notMyBytes  ");
+        // printNumberln("discarding byte @ index : ", index );
 
         if( ++ index == length ) state = getChecksum ; 
         goto relayByte ;
 
 
     case transceiveData:
-        Serial.print("STATE transceiveData  ");
-        printNumber_("transceiving byte: " , b ) ;
-        printNumberln("@ index : ", index ) ;
+        // Serial.print("STATE transceiveData  ");
+        // printNumber_("transceiving byte: " , b ) ;
+        // printNumberln("@ index : ", index ) ;
 
         if( notifyGetPayload )  // for inputs OR input states on the byte
         {
@@ -248,29 +248,28 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         goto relayByte ;
 
     case getChecksum:               // NOTE. we could do without checksum.
-        Serial.print("STATE getChecksum  ");
+        // Serial.print("STATE getChecksum  ");
         message.payload[index] = b ;
         if( !checkChecksum() ) ; // do something with an error or so.
 
-        printNumberln("checksum processed " , b ) ;
+        // printNumberln("checksum processed " , b ) ;
 
         if( messageCounter ++ == messageCount ) 
         {
             processOutputs() ;
             state = wait4ID ; // This was the last opcode we had to process, we are finished
-            Serial.println("PACKAGE PROCESSED!!" ) ;
+            // Serial.println("PACKAGE PROCESSED!!" ) ;
         }
         else 
         {
             state = getOPCODE ;        // there are more messages in this packet
-            Serial.println("MESSAGE PROCESSED, getting next message" ) ;
+            // Serial.println("MESSAGE PROCESSED, getting next message" ) ;
         }
 
         // fallthrough
 
     relayByte:
-        Serial.print("RELAYING ");Serial.println(b,HEX);
-        //Serial.write( b ) ;
+        Serial.write( b ) ;
         break ;
     }
 }
@@ -282,9 +281,8 @@ void TSCbus::transceiveMessage() // <-- slave unit only
  */
 void TSCbus::processOutputs()
 {
-    Serial.print("processing ouputs OPCODE: ");
     uint8 OPCODE = message.OPCODE & 0xF0 ;
-    Serial.println(OPCODE, HEX ) ;
+
     switch( OPCODE )
     {                                                       // pin                   // data
     case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[0], message.payload[1] ) ; break ; 
@@ -296,46 +294,3 @@ void TSCbus::processOutputs()
 }
 
 
-
-
-GPIO::GPIO( uint8, uint8, uint8 ) ;
-void GPIO::init()
-{
-}
-
-void GPIO::set( uint8 ) 
-{
-}
-
-void GPIO::get() 
-{
-}
-
-
-
-/*
-static HardwareSerial*   hwPort = nullptr ;
-static SoftwareSerial*   swPort = nullptr ;
-static Stream*           mySerial = nullptr ;
-
-void setup232( SoftwareSerial& s, uint32_t baud )
-{
-    swPort = &s ;
-    mySerial = swPort ;
-    swPort->begin( baud ) ;
-}
-
-void setup232( HardwareSerial& s, uint32_t baud )
-{
-    hwPort = &s ;
-    mySerial = hwPort ;
-    hwPort->begin( baud ) ;
-}
-
-// transmitt control functions
-void sendOutput( uint8 pin, uint8 state )
-{
-    uint8 message[] = { OPCsetOutput, pin, state } ;
-    sendMessage( message ) ;
-}
-*/
