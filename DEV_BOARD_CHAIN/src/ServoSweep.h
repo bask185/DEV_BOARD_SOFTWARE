@@ -24,6 +24,7 @@ public:
     void        useEEPROM( uint16_t _eeAddress ) ;
     void        useEEPROM( ) ;
     void        reset( ) ;
+    void        tglState( ) ;
 
 private:
     void        updateMiddle() ;

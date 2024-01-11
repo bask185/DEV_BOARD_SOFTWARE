@@ -5,6 +5,14 @@
 
 A complete packet exists out of a two-byte header and several messages, one for every slave.
 
+// LATEST STATUS AND THOUGHTS
+  1). I am not sure if I want to retain checksums. When reading inputs, the payload is changed on the fly. So unless you buffer the original data, 
+      it is a bit pointless to check the checksum.
+  2). THERE IS A BUG. follow up messages tend to screw up the received payloads
+  3). I may want to start by sending preambles of lets say 6 bytes with 0xFF. In whatever event that a slave does not get a byte it expects it will not loop or crash indefinately
+      Code should always check on preamples and reset the lot
+
+
 The header exists out of an ID followed by the amount of connected slaves. The master dictates this number.
 Every slave increments the ID byte for the next slave. The ID is used to determen which of the messages is ment for that slave.
 
@@ -134,12 +142,10 @@ RRRRRR   = relay pin number 0-62 (for frogs)
 TTTTTTTT = module type
 1 -> TS Jack Off All Trade DEV BOARD
 2 -> future use?
-
-
 */
-
-byte testArray[] = { 0x01, 0x01, 0x22, 0x0D, 0x01, 0xFF } ; 
-byte testLen = 7 ;
+                             //   OPC    P0   P1    P2    P3    P4    P5    P6    P7   XOR |  OPC   13    12   XOR 
+byte testArray[] = { 0x01, 0x02, 0x98, 0x00, 0x00, 0x00, 0x00, 0x04, 0x05, 0x06, 0x07, 0xFF, 0x22, 0x0D, 0x0C, 0xFF } ; 
+const byte testLen = sizeof(testArray) / sizeof(testArray[0]) + 1 ;
 byte testCounter = 0 ;
 
 enum states
@@ -156,6 +162,7 @@ TSCbus::TSCbus()
 {
 }
 
+
 uint8 TSCbus::checkChecksum()
 {
     return 1 ;
@@ -168,7 +175,7 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     //if( Serial.available() == 0 ) return ;
 
     //uint8 b = Serial.read() ; // remove '0'
-    Serial.print("BYTE RECEIVED: ");Serial.print(b,HEX);Serial.write(' ');
+    Serial.print("\r\nBYTE RECEIVED: ");Serial.print(b,HEX);Serial.write(' ');
     uint8 pinNumber ;
     uint8 pinState ;
 
@@ -203,9 +210,9 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         Serial.print("received OPCODE: ");Serial.print(b, HEX) ;
         printNumberln("  with length: ", b & 0x0F  );
 
-        index =  1 ;                        // reset index
+        index =  0 ;                        // reset index
         length = b & 0x0F ;                 // get the length for this OPCODE message
-        message.payload[0] = b & 0xF0 ;
+        //message.payload[0] = b & 0xF0 ;
 
         if( messageCounter != myID )        // if not my message..
         {
@@ -213,15 +220,16 @@ void TSCbus::transceiveMessage() // <-- slave unit only
             goto relayByte ;
         }
         // message is for me
+        message.OPCODE = b & 0xF0 ;
         message.length = length ;
         state = transceiveData ;
         goto relayByte ;
 
     case notMyBytes:
         Serial.print("STATE notMyBytes  ");
-        printNumberln("discarding byte: ", index );
+        printNumberln("discarding byte @ index : ", index );
 
-        if( ++ index == length+1 ) state = getChecksum ; 
+        if( ++ index == length ) state = getChecksum ; 
         goto relayByte ;
 
 
@@ -232,11 +240,11 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
         if( notifyGetPayload )  // for inputs OR input states on the byte
         {
-            b |= notifyGetPayload( message.payload[0], index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
+            b |= notifyGetPayload( message.OPCODE, index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
         }
         message.payload[index] = b ;
 
-        if( ++ index == length+1 ) state = getChecksum ;
+        if( ++ index == length ) state = getChecksum ;
         goto relayByte ;
 
     case getChecksum:               // NOTE. we could do without checksum.
@@ -250,19 +258,19 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         {
             processOutputs() ;
             state = wait4ID ; // This was the last opcode we had to process, we are finished
-            Serial.println("message processed!!" ) ;
+            Serial.println("PACKAGE PROCESSED!!" ) ;
         }
         else 
         {
             state = getOPCODE ;        // there are more messages in this packet
-            Serial.println("message processed, getting next message" ) ;
+            Serial.println("MESSAGE PROCESSED, getting next message" ) ;
         }
 
         // fallthrough
 
     relayByte:
-        // Serial.print(b, HEX) ;   Serial.print(" HEX, ") ;
-        // Serial.print(b) ; Serial.println(" DEC") ;
+        Serial.print("RELAYING ");Serial.println(b,HEX);
+        //Serial.write( b ) ;
         break ;
     }
 }
@@ -274,23 +282,20 @@ void TSCbus::transceiveMessage() // <-- slave unit only
  */
 void TSCbus::processOutputs()
 {
-    uint8 OPCODE = message.payload[0] & 0xF0 ;
-
-    printNumberln( "OPCODE in process outputs: ", OPCODE ) ;
-
+    Serial.print("processing ouputs OPCODE: ");
+    uint8 OPCODE = message.OPCODE & 0xF0 ;
+    Serial.println(OPCODE, HEX ) ;
     switch( OPCODE )
-    {
-    // case 0x10: if(        notifyInit )        notifyInit() ; break ;    // OPC_INIT what to do
-    // case 0xF0: if(        notifyIdle )        notifyIdle() ; break ;    // OPC_IDLE what to do
-    //  notifySetServo
-    case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[1], message.payload[2] ) ; break ;    // OPC_SET_OUTPUT 
-    case 0x30: if(      notifySetPwm )      notifySetPwm( message.payload[1], message.payload[2] ) ; break ;    // OPC_SET_PWM    
-    case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[1], message.payload[2] ) ; break ;    // OPC_CONF_SERVO note rename it to 'service message'?
-    case 0x90: if(     notifySetData )     notifySetData( message ) ; break ; // we send a pointer to the message object. The function can spoon out the raw data and do application stuff withit
+    {                                                       // pin                   // data
+    case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[0], message.payload[1] ) ; break ; 
+    case 0x30: if(      notifySetPwm )      notifySetPwm( message.payload[0], message.payload[1] ) ; break ; 
+    case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[0], message.payload[1] ) ; break ;
+    case 0x80: if(    notifySetServo )    notifySetServo( message.payload[0], message.payload[1] ) ; break ; 
+    case 0x90: if(     notifySetData )     notifySetData( &message ) ; break ; // we send a pointer to the message object. The function can spoon out the raw data and do application stuff withit
     }
 }
-//            ID count set data with 8 bytes
-// test message 01 01 99 41 42 43 44 45 46 47 48 FF 
+
+
 
 
 GPIO::GPIO( uint8, uint8, uint8 ) ;
@@ -306,9 +311,7 @@ void GPIO::get()
 {
 }
 
-void GPIO::setPWM( uint8 ) 
-{
-}
+
 
 /*
 static HardwareSerial*   hwPort = nullptr ;

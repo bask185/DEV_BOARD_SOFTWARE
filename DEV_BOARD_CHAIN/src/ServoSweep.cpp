@@ -108,10 +108,13 @@ void ServoSweep::setState( uint8_t _state )
     if( eeFlags & STORE_POSITIONS )
     {
         EEPROM.write( eeAddress+2, state ) ;
-        // printNumberln("STORING state: ", state) ;
     }
+}
 
-    // printNumberln("setting state: ", state) ;
+void ServoSweep::tglState()
+{
+    state ^= 1 ;
+    setState( state ) ;
 }
 
 uint8_t ServoSweep::getState()

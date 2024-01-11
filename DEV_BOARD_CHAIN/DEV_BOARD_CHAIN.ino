@@ -5,27 +5,25 @@
 #include "src/debounceClass.h"
 #include <Wire.h>
 
-/* TODO
-- detect PCF modules and transmitt inputs. 
-  should use pins 16-23, 24-31 etc
-- add function to configure servo positions if needed?
-*/
+
 
 TSCbus bus ;
+
+JACK_OF_ALL_TRADES me ; // yes, I am serious about 'me'
 
 const int PCFaddress = 0x20 ;
 
 uint8   currentServoIndex ;
 uint8   nPCF ;
 
-// const int nServos = 4 ;
-// ServoSweep servo[nServos] =
-// {
-//     ServoSweep( servo1, 80, 100, 20, 1 ),
-//     ServoSweep( servo2, 80, 100, 20, 1 ),
-//     ServoSweep( servo3, 80, 100, 20, 1 ),
-//     ServoSweep( servo4, 80, 100, 20, 1 ),
-// } ;
+const int nServos = 4 ;
+ServoSweep servo[nServos] =
+{
+    ServoSweep( servo1, 80, 100, 20, 1 ),
+    ServoSweep( servo2, 80, 100, 20, 1 ),
+    ServoSweep( servo3, 80, 100, 20, 1 ),
+    ServoSweep( servo4, 80, 100, 20, 1 ),
+} ;
 
 // const int nInputs = 4 ;
 // Debounce input[nInputs] =
@@ -66,34 +64,7 @@ uint8   nPCF ;
 //     }
 // }
 
-// void processPCF()
-// {
-//     if( nPCF == 0 ) return ;
 
-//     REPEAT_MS( 50)
-//     {
-//         for( int PCF = 0 ; PCF < nPCF ; PCF ++ )
-//         {
-//             Wire.requestFrom( PCFaddress+PCF, 1 ) ;
-
-//             static uint8 prevInputs[8] ;
-//             uint8 inputs = Wire.read() ;
-
-//             for( int pin = 0 ; pin < 8 ; pin ++ )
-//             {
-//                 uint8 pinNew = (    inputs      >> pin) & 1 ;
-//                 uint8 pinOld = (prevInputs[PCF] >> pin) & 1 ;
-
-//                 if( pinNew != pinOld )
-//                 {  // 20<->27  28<->35  36<->43  44<->51  ETC  
-//                     sendInput( 20 + pin + nPCF*8, pinNew ) ; // TEST ME
-//                 }
-//             }
-//             prevInputs[PCF] = inputs ;
-//         }
-//     }
-//     END_REPEAT
-// }
 
 
 void setup()
@@ -143,51 +114,48 @@ void loop()
 function should be exited ASAP */
 uint8 notifyGetPayload( uint8 OPCODE, uint8 index )
 {
-    Serial.print("NOTIFY GET PAYLOAD ");
-    printNumberln( "OPCODE: ", OPCODE ) ;
-
-    // if( index == 1 ) { printNumberln( "Payload @ index: ", index ) ; return 0x81 ;}  
-    // if( index == 2 ) { printNumberln( "Payload @ index: ", index ) ; return 0x82 ;}  
-    // if( index == 3 ) { printNumberln( "Payload @ index: ", index ) ; return 0x83 ;}  
+    if( OPCODE == OPC_SET_DATA )
+    {
+        if( index == 4 ) return me.switches ; /* byte 4 * /    uint8 switches ;// xxxxSSSS  (sw4-Sw1) */
+        if( index == 5 ) return me.pot1HB ;   /* byte 5 * /    uint8 pot1HB ;  // xxxxxxPP */
+        if( index == 6 ) return me.pot1LB ;   /* byte 6 * /    uint8 pot1LB ;  // PPPPPPPP */
+        if( index == 7 ) return me.pot2HB ;   /* byte 7 * /    uint8 pot2HB ;  // xxxxxxPP */
+        if( index == 8 ) return me.pot2LB ;   /* byte 8 * /    uint8 pot2LB ;  // PPPPPPPP */
+    }
     
     return 0x00 ;
 }
 
 
-void notifySetOutput( uint8 pin, uint8 state )
+void notifySetData( Message *message )
 {
-    printNumber_("setting pin #", pin ) ;
-    printNumberln("state: ", state ) ;
-    digitalWrite(pin,state);
-}
-
-void notifySetPwm( uint8 pin, uint8 dutycycle )
-{
-    printNumber_("setting PWM on pin #", pin ) ;
-    printNumberln("dutycycle: ", dutycycle ) ;
-}
-
-void notifyServoConfig()
-{
-}
-
-/*9
-   uint8 payload[16] ; // max possible length
-    uint8 OPC ;
-    uint8 length ;
-    uint8 checksum ;
-    uint8 index ;
-*/
-
-void notifySetData( Message message )
-{
-    Serial.println( "NOTIFY SET DATA") ;
-    printNumberln( "message length: ", message.length ) ;
-    printNumberln( "OPCODE : ", message.payload[0] ) ;
-    for( int i = 4 ; i < message.length - 1 ; i ++ )
+    if( message.OPCODE == OPC_CONF_IO )
     {
-        printNumber_("Payload: ", message.payload[i] ) ;
-        printNumberln("@ index: ",i) ;
+        me.mode         = message -> payload[0] ; // 1 = servos without frog
+                                                  // 2 = servos with frog
+        me.servoConf    = message -> payload[1] ; // 1 = decrement last set servo
+                                                  // 2 = increment last set servo
+    }
+
+    if( message.OPCODE == OPC_SET_DATA )    // command to set ALL outputs
+    {
+        me.PWM1    = message -> payload[0] ;
+        me.PWM2    = message -> payload[1] ;
+        me.PWM3    = message -> payload[2] ;
+        me.outputs = message -> payload[3] ;// SSSSRRRR  Servo1-4 Relay1-4
+
+        servo[1].tglState( (me.outputs >> 6) & 1 ) ; 
+        servo[0].tglState( (me.outputs >> 7) & 1 ) ; 
+        servo[2].tglState( (me.outputs >> 5) & 1 ) ; 
+        servo[3].tglState( (me.outputs >> 4) & 1 ) ;
+
+        if( mode == no_frog ) // if relays are not connected to servo's, control them
+        {
+            digitalWrite( relay1, (me.outputs >> 3) & 1 ) ;
+            digitalWrite( relay2, (me.outputs >> 2) & 1 ) ;
+            digitalWrite( relay3, (me.outputs >> 1) & 1 ) ;
+            digitalWrite( relay4, (me.outputs >> 0) & 1 ) ;
+        } 
     }
 }
 
