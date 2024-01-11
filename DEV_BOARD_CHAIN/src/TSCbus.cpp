@@ -156,31 +156,22 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
     switch (state)
     {
-    case waitFirstByte:                 // wait for first byte
-        myID  = b ;
-        messageCounter = 1 ;               // reset the byte counter
-        lastOPC        = 0 ;               // reset flag
+    case waitFirstByte:                    // wait for first byte
+        myID = b ;                         // the first byte of the message carries my ID
 
-        // printNumberln( "MY ID: ", myID ) ;
+        messageCounter = 1 ;               // reset the byte counter
+        lastOPC        = 0 ;               // reset flag NOTY IN USE ATM
 
         state = getModuleCount ;
-        b ++ ;                          // increment the slave ID byte before relaying
+        b ++ ;                          // increment the slave ID for the next slave before relaying
         goto relayByte ;
 
 
     case getModuleCount:                // get the amount of modules from master. This is used to count the opcodes so we know when the message is finished
         moduleCount = b ;
-        // printNumberln( "module count: ", moduleCount ) ;
-        if( moduleCount == 0 )
-        {
-            state = waitFirstByte ;
-            // Serial.println("module count is 0, waiting for new message");
-        }
-        else
-        {
-            state  = getOPC ;
-            // Serial.println("going to get OPCODE");
-        }
+        if( moduleCount == 0 ) state = waitFirstByte ; // if the module count is 0, the master is inspecting the bus and can count slaves.
+        else                   state = getOPC ;        // otherwise, get the opcode of the first message
+
         goto relayByte ;
 
 
@@ -190,21 +181,13 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         message.length = b & 0x0F ;                 // get the length for this OPCODE message
         message.index =  1 ;                        // OPCODE has index 1 so..
 
-        // printNumber_( "OPCODE: ", message.OPC ) ;
-        // printNumberln( "length: ", message.length ) ;
-
-        if( message.OPC == OPC_GET_INPUT  
+        if( message.OPC == OPC_GET_INPUT 
         ||  message.OPC == OPC_GET_ANALOG 
-        ||  message.OPC == OPC_GET_DATA )  // Slave must SEND information
-        {
-            state = transmittData ;
-            // Serial.println("going to transmitt");
-        }
-        else                                // slave must RECEIVE information
-        {
-            state = receiveData ;
-            // Serial.println("going to receive");
-        }
+        ||  message.OPC == OPC_GET_DATA )   
+
+              state = transmittData ;                 // Slave must  SEND information
+        else  state = receiveData ;                   // slave must RECEIVE information
+
         goto relayByte ;
 
 
@@ -212,27 +195,21 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         if( messageCounter == myID )            // if this is my OPCODE
         {
             message.payload[ message.index ] = b ;
-            // printNumberln( "receiving payload: ", b ) ;
         }
-        else
-        {
-            // printNumberln( "not my ID ", messageCounter ) ;
-        }
+
         if( ++ message.index == message.length ) state = getChecksum ;
         goto relayByte ;
 
 
     case transmittData:
-        if( messageCounter == myID )            // if this is my OPCODE
-        { 
+        if( messageCounter == myID )            // NOTE this need alteration. 
+        {                                       // only now we receive our pinnumber to read from. If slave has 20 inputs, it cannot know
             pinNumber = b >> 1 ;
-            // printNumber_("Reading from pin: ", pinNumber);
-            message.payload[ message.index ] = digitalRead(pinNumber) ;
-            pinState = message.payload[ message.index ] ;
-            // printNumberln("state: ",  pinState);
+
+            message.payload[ message.index ] = digitalRead( pinNumber ) ;
+
 
             b = message.payload[ message.index ] ; // slave must send something. Fill the byte
-            // printNumberln( "sending payload: ", b ) ;
         }
         else
         {
