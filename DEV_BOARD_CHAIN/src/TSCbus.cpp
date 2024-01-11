@@ -3,11 +3,18 @@
 /*     HEADER          |        SLAVE 1 MESSAGE         |        SLAVE X MESSAGE         |
      ID | SLAVE COUNT  |  <OPCODE> <DATAx>  <CHECKSUM>  |  <OPCODE> <DATAx>  <CHECKSUM>  |
 
-Opcode contains packet type and message length for eevry slave. 
-First nibble is the command, 2nd nibble is the length.
+A complete packet exists out of a two-byte header and several messages, one for every slave.
 
-The slave count is transmitted as well so all slaves now when a complete package
-is sent
+The header exists out of an ID followed by the amount of connected slaves. The master dictates this number.
+Every slave increments the ID byte for the next slave. The ID is used to determen which of the messages is ment for that slave.
+
+Every slave relays every byte as fast as possible. A slave may read out his instructions to control outputs or it may set bits in his message
+in order to relay INPUT status back to the master. If a slave is processing a message which is not for him, it simply relays the bytes over the serial bus
+
+A message is split in 3 parts. The OPCODE, payload and Checksum
+
+OPCODE contains packet type and message length for eevry slave. 
+First nibble is the command, 2nd nibble is the length.
 
 XOR is NOT counted in the package length. The OPCODE itself is part of package length
 
@@ -45,10 +52,13 @@ CONTROL OUTPUTS
 --------------------------------------------------------------------------------
 OPC_SET_OUTPUT  = 0X22
 OPC_SET_PWM     = 0X33
+OPC_SET_DATA    = 0x91
 
 Set OPCODES may either set or toggle the outputs. Regardsless of what object it is.
 It does not matter whether a servo or relay is connected to the addressed pin or not.
 With the exception of PWM outputs, outputs are either '1' or '0' and must be configurated before hand
+
+OPC_SET_DATA may set more than 1 output in a single message. The length is therefor variable. This is application specific
 
 <OPC_SET_OUTPUT>  <IIIIIISS <CHECKSUM>
 IIIIII  = 6 bit pin number, 0 - 63
@@ -59,6 +69,8 @@ SS      = 2 -> ouput toggle
 <OPC_SET_PWM> <IIIIIIII> <PPPPPPPP> <CHECKSUM>
 IIIIIIII = ID of PWM pin
 PPPPPPPP = PWM value
+
+<OPC_SET_DATA> <DDDDDDDD> ... <DDDDDDDD> <CHECKSUM>
 
 
 READ INPUTS
@@ -133,7 +145,9 @@ enum states
     getOPC,
     receiveData,
     transmittData,
+    transceiveData,
     getChecksum,
+    notMyBytes,
 } ;
 
 TSCbus::TSCbus()
@@ -177,69 +191,155 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
 // SLAVE NODE
     case getOPC:
-        message.OPC    = b ;
-        message.length = b & 0x0F ;                 // get the length for this OPCODE message
-        message.index =  1 ;                        // OPCODE has index 1 so..
+        index =  1 ;                        // OPCODE has index 1
 
-        if( message.OPC == OPC_GET_INPUT 
-        ||  message.OPC == OPC_GET_ANALOG 
-        ||  message.OPC == OPC_GET_DATA )   
+        if( messageCounter != myID )                // if not my message..
+        {
+            length = b & 0x0F ;                 // get the length for this OPCODE message
+            state = notMyBytes ;
+            goto relayByte ;
+        }
 
-              state = transmittData ;                 // Slave must  SEND information
-        else  state = receiveData ;                   // slave must RECEIVE information
+        message.OPC    = b & 0xF0 ;
+        message.length = b & 0x0F ;
 
+        if( message.OPC == OPC_GET_INPUT  & 0xF0  
+        ||  message.OPC == OPC_GET_ANALOG & 0xF0 
+        ||  message.OPC == OPC_GET_DATA   & 0xF0 ) state = transmittData ; // NOTE transceiveData is the shit2be
+        else                                       state = receiveData ;    
         goto relayByte ;
 
+    case notMyBytes:
+        if( ++ index == length ) state = getChecksum ; 
+        goto relayByte ;
+
+    // how transceiveData works: If received bytes are to be filled with inputs. These bytes are already empty and the payload is already filled
+    // therfor we OR the empty bytes with the prepared payload values in order to read inputs
+    // IF a received byte is ment for outputs, it contains data. The 'prepared' payload value must be empty for outputs. OR'ing 0 does nothing to the data
+    // than the received data is spooned into the payload.
+    // this allow you to utilize combined input output messages. It is even possible to combine inputs and outputs in a single byte. 
+    // As long as the prepared payload values are OK.
+
+    case transceiveData:
+        b |= message.payload[ index ] ;
+        message.payload[ index ] = b ;
+
+        if( ++ index == message.length ) state = getChecksum ;
+        goto relayByte ;
 
     case receiveData:
-        if( messageCounter == myID )            // if this is my OPCODE
-        {
-            message.payload[ message.index ] = b ;
-        }
+        message.payload[ index ] = b ;
 
-        if( ++ message.index == message.length ) state = getChecksum ;
+        if( ++ index == message.length ) state = getChecksum ;
         goto relayByte ;
 
-
     case transmittData:
-        if( messageCounter == myID )            // NOTE this need alteration. 
-        {                                       // only now we receive our pinnumber to read from. If slave has 20 inputs, it cannot know
-            pinNumber = b >> 1 ;
-
-            message.payload[ message.index ] = digitalRead( pinNumber ) ;
-
-
-            b = message.payload[ message.index ] ; // slave must send something. Fill the byte
-        }
-        else
-        {
-            // printNumberln( "not my ID ", messageCounter ) ;
-        }
-        if( ++ message.index == message.length ) state = getChecksum ;
+        //pinNumber = b >> 1 ;
+        b = message.payload[ index ] ; // slave must send something. Fill the byte with prepared value
+        if( ++ index == message.length ) state = getChecksum ;
         goto relayByte ;
 
 
     case getChecksum:
         message.checksum = b ;
-        // printNumberln( "comparing checksum: ", b ) ;
-        if( !checkChecksum() ) // Serial.print("wrong checksum bruh.. fock off :-P");
+        if( !checkChecksum() ) ; // do something with an error or so.
 
-        if( messageCounter ++ == moduleCount ) // This was the last opcode we had to process, we are finished
+        if( messageCounter ++ == moduleCount ) 
         {
-            // Serial.println("message relayed") ;
-            state = waitFirstByte ;
+            messageReceived = 1 ;
+            state = waitFirstByte ; // This was the last opcode we had to process, we are finished
         }
-        else
-        {
-            // Serial.println("getting next OPCODE") ;
-            state = getOPC ;
-        }// fallthru
+        else state = getOPC ;        // there are more messages in this packet
+        // fallthrough
 
     relayByte:
         Serial.write(b) ; 
-        // // Serial.println(b) ;
         break ;
     }
+}
+
+/**
+ * @brief procces a message after a packet is processed. 
+ * Relevant payloads from message must be processed for outputs 
+ * New payloads must be prepared for inputs.
+ */
+void TSCbus::processMessage()
+{
+    if( messageReceived == 0 ) return ;
+    messageReceived = 0 ;
+
+    // get the OUTPUT commands fist!
+    switch( message.OPC )
+    {
+    case 0x10:    // OPC_INIT
+
+        break ;
+
+    case 0xF0:    // OPC_IDLE
+
+        break ;
+
+    case 0x20:    // OPC_SET_OUTPUT
+
+        break ;
+
+    case 0x30:    // OPC_SET_PWM
+
+        break ;
+
+    case 0x40:    // OPC_GET_INPUT
+
+        break ;
+
+    case 0x50:    // OPC_GET_ANALOG
+
+        break ;
+
+    case 0x60:    // OPC_GET_DATA
+        // application specific, We have just transmitted INPUT data to master and now we don't have to do anything
+        break ;
+
+    case 0x60:    // OPC_CONF_IO
+
+        break ;
+
+    case 0x70:    // OPC_CONF_SERVO
+
+        break ;
+
+    case 0x80:    // OPC_GET_MODULE_TYPE
+
+        break ;
+
+    case 0x90:    // OPC_SET_DATA
+        // application specific, do a callback with a pointer to the data bytes and a length?
+        break ;  
+    }
+
+    // preparePayload() // we dont know in advance what message we get. If we are going to get an input readout we need to prepare the payload with our input thingies.
+    //                  // if we are going to get an OUTPUT message, we don't have to prepare payload. We can receive output message at any time.
+                        // Note. Input readout should be handled in 2 messages. 
+
+}
+
+
+
+
+GPIO::GPIO( uint8, uint8, uint8 ) ;
+void GPIO::init()
+{
+}
+
+void GPIO::set( uint8 ) 
+{
+}
+
+void GPIO::get() 
+{
+}
+
+void GPIO::setPWM( uint8 ) 
+{
 }
 
 /*
