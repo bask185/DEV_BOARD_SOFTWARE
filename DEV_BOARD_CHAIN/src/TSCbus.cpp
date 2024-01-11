@@ -138,16 +138,18 @@ TTTTTTTT = module type
 
 */
 
+byte testArray[] = { 0x01, 0x01, 0x22, 0x0D, 0x01, 0xFF } ; 
+byte testLen = 7 ;
+byte testCounter = 0 ;
+
 enum states
 {
-    waitFirstByte,
-    getModuleCount,
-    getOPC,
-    receiveData,
-    transmittData,
+    wait4ID,
+    getMessageCount,
+    getOPCODE,
     transceiveData,
-    getChecksum,
     notMyBytes,
+    getChecksum,
 } ;
 
 TSCbus::TSCbus()
@@ -159,101 +161,108 @@ uint8 TSCbus::checkChecksum()
     return 1 ;
 }
 
-
 void TSCbus::transceiveMessage() // <-- slave unit only
 {
-    if( Serial.available() == 0 ) return ;
+    if( testCounter >= testLen-1 ) return ;
+    uint8 b = testArray[testCounter++] ;
+    //if( Serial.available() == 0 ) return ;
 
-    uint8 b = Serial.read() ; // remove '0'
+    //uint8 b = Serial.read() ; // remove '0'
+    Serial.print("BYTE RECEIVED: ");Serial.print(b,HEX);Serial.write(' ');
     uint8 pinNumber ;
     uint8 pinState ;
 
     switch (state)
     {
-    case waitFirstByte:                    // wait for first byte
+    case wait4ID:                    // wait for first byte
         myID = b ;                         // the first byte of the message carries my ID
+        Serial.print("STATE wait4ID  ");
+        printNumberln("received ID: ", myID );
 
         messageCounter = 1 ;               // reset the byte counter
-        lastOPC        = 0 ;               // reset flag NOTY IN USE ATM
 
-        state = getModuleCount ;
+        state = getMessageCount ;
         b ++ ;                          // increment the slave ID for the next slave before relaying
         goto relayByte ;
 
 
-    case getModuleCount:                // get the amount of modules from master. This is used to count the opcodes so we know when the message is finished
-        moduleCount = b ;
-        if( moduleCount == 0 ) state = waitFirstByte ; // if the module count is 0, the master is inspecting the bus and can count slaves.
-        else                   state = getOPC ;        // otherwise, get the opcode of the first message
+    case getMessageCount:                // get the amount of messages inside this package
+        messageCount = b ;
+        Serial.print("STATE getMessageCount  ");
+        printNumberln("received message count: ", messageCount );
+
+        if( messageCount == 0 ) state = wait4ID ; // if the module count is 0, the master is inspecting the bus and can count slaves.
+        else                    state = getOPCODE ;        // otherwise, get the message length
 
         goto relayByte ;
 
 
 // SLAVE NODE
-    case getOPC:
-        index =  1 ;                        // OPCODE has index 1
+    case getOPCODE:
+        Serial.print("STATE getOPCODE  ");
+        Serial.print("received OPCODE: ");Serial.print(b, HEX) ;
+        printNumberln("  with length: ", b & 0x0F  );
 
-        if( messageCounter != myID )                // if not my message..
+        index =  1 ;                        // reset index
+        length = b & 0x0F ;                 // get the length for this OPCODE message
+        message.payload[0] = b & 0xF0 ;
+
+        if( messageCounter != myID )        // if not my message..
         {
-            length = b & 0x0F ;                 // get the length for this OPCODE message
             state = notMyBytes ;
             goto relayByte ;
         }
-
-        message.OPC    = b & 0xF0 ;
-        message.length = b & 0x0F ;
-
-        if( message.OPC == OPC_GET_INPUT  & 0xF0  
-        ||  message.OPC == OPC_GET_ANALOG & 0xF0 
-        ||  message.OPC == OPC_GET_DATA   & 0xF0 ) state = transmittData ; // NOTE transceiveData is the shit2be
-        else                                       state = receiveData ;    
+        // message is for me
+        message.length = length ;
+        state = transceiveData ;
         goto relayByte ;
 
     case notMyBytes:
-        if( ++ index == length ) state = getChecksum ; 
+        Serial.print("STATE notMyBytes  ");
+        printNumberln("discarding byte: ", index );
+
+        if( ++ index == length+1 ) state = getChecksum ; 
         goto relayByte ;
 
-    // how transceiveData works: If received bytes are to be filled with inputs. These bytes are already empty and the payload is already filled
-    // therfor we OR the empty bytes with the prepared payload values in order to read inputs
-    // IF a received byte is ment for outputs, it contains data. The 'prepared' payload value must be empty for outputs. OR'ing 0 does nothing to the data
-    // than the received data is spooned into the payload.
-    // this allow you to utilize combined input output messages. It is even possible to combine inputs and outputs in a single byte. 
-    // As long as the prepared payload values are OK.
 
     case transceiveData:
-        b |= message.payload[ index ] ;
-        message.payload[ index ] = b ;
+        Serial.print("STATE transceiveData  ");
+        printNumber_("transceiving byte: " , b ) ;
+        printNumberln("@ index : ", index ) ;
 
-        if( ++ index == message.length ) state = getChecksum ;
+        if( notifyGetPayload )  // for inputs OR input states on the byte
+        {
+            b |= notifyGetPayload( message.payload[0], index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
+        }
+        message.payload[index] = b ;
+
+        if( ++ index == length+1 ) state = getChecksum ;
         goto relayByte ;
 
-    case receiveData:
-        message.payload[ index ] = b ;
-
-        if( ++ index == message.length ) state = getChecksum ;
-        goto relayByte ;
-
-    case transmittData:
-        //pinNumber = b >> 1 ;
-        b = message.payload[ index ] ; // slave must send something. Fill the byte with prepared value
-        if( ++ index == message.length ) state = getChecksum ;
-        goto relayByte ;
-
-
-    case getChecksum:
-        message.checksum = b ;
+    case getChecksum:               // NOTE. we could do without checksum.
+        Serial.print("STATE getChecksum  ");
+        message.payload[index] = b ;
         if( !checkChecksum() ) ; // do something with an error or so.
 
-        if( messageCounter ++ == moduleCount ) 
+        printNumberln("checksum processed " , b ) ;
+
+        if( messageCounter ++ == messageCount ) 
         {
-            messageReceived = 1 ;
-            state = waitFirstByte ; // This was the last opcode we had to process, we are finished
+            processOutputs() ;
+            state = wait4ID ; // This was the last opcode we had to process, we are finished
+            Serial.println("message processed!!" ) ;
         }
-        else state = getOPC ;        // there are more messages in this packet
+        else 
+        {
+            state = getOPCODE ;        // there are more messages in this packet
+            Serial.println("message processed, getting next message" ) ;
+        }
+
         // fallthrough
 
     relayByte:
-        Serial.write(b) ; 
+        // Serial.print(b, HEX) ;   Serial.print(" HEX, ") ;
+        // Serial.print(b) ; Serial.println(" DEC") ;
         break ;
     }
 }
@@ -263,66 +272,25 @@ void TSCbus::transceiveMessage() // <-- slave unit only
  * Relevant payloads from message must be processed for outputs 
  * New payloads must be prepared for inputs.
  */
-void TSCbus::processMessage()
+void TSCbus::processOutputs()
 {
-    if( messageReceived == 0 ) return ;
-    messageReceived = 0 ;
+    uint8 OPCODE = message.payload[0] & 0xF0 ;
 
-    // get the OUTPUT commands fist!
-    switch( message.OPC )
+    printNumberln( "OPCODE in process outputs: ", OPCODE ) ;
+
+    switch( OPCODE )
     {
-    case 0x10:    // OPC_INIT
-
-        break ;
-
-    case 0xF0:    // OPC_IDLE
-
-        break ;
-
-    case 0x20:    // OPC_SET_OUTPUT
-
-        break ;
-
-    case 0x30:    // OPC_SET_PWM
-
-        break ;
-
-    case 0x40:    // OPC_GET_INPUT
-
-        break ;
-
-    case 0x50:    // OPC_GET_ANALOG
-
-        break ;
-
-    case 0x60:    // OPC_GET_DATA
-        // application specific, We have just transmitted INPUT data to master and now we don't have to do anything
-        break ;
-
-    case 0x60:    // OPC_CONF_IO
-
-        break ;
-
-    case 0x70:    // OPC_CONF_SERVO
-
-        break ;
-
-    case 0x80:    // OPC_GET_MODULE_TYPE
-
-        break ;
-
-    case 0x90:    // OPC_SET_DATA
-        // application specific, do a callback with a pointer to the data bytes and a length?
-        break ;  
+    // case 0x10: if(        notifyInit )        notifyInit() ; break ;    // OPC_INIT what to do
+    // case 0xF0: if(        notifyIdle )        notifyIdle() ; break ;    // OPC_IDLE what to do
+    //  notifySetServo
+    case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[1], message.payload[2] ) ; break ;    // OPC_SET_OUTPUT 
+    case 0x30: if(      notifySetPwm )      notifySetPwm( message.payload[1], message.payload[2] ) ; break ;    // OPC_SET_PWM    
+    case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[1], message.payload[2] ) ; break ;    // OPC_CONF_SERVO note rename it to 'service message'?
+    case 0x90: if(     notifySetData )     notifySetData( message ) ; break ; // we send a pointer to the message object. The function can spoon out the raw data and do application stuff withit
     }
-
-    // preparePayload() // we dont know in advance what message we get. If we are going to get an input readout we need to prepare the payload with our input thingies.
-    //                  // if we are going to get an OUTPUT message, we don't have to prepare payload. We can receive output message at any time.
-                        // Note. Input readout should be handled in 2 messages. 
-
 }
-
-
+//            ID count set data with 8 bytes
+// test message 01 01 99 41 42 43 44 45 46 47 48 FF 
 
 
 GPIO::GPIO( uint8, uint8, uint8 ) ;

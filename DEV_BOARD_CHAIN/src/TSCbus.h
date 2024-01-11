@@ -21,11 +21,8 @@ extern uint8 receiveMessage() ;
 
 typedef struct Mess
 {
-    uint8 payload[16] ; // max possible length
-    uint8 OPC ;
+    uint8 payload[16] ; // maximum length is to be determened
     uint8 length ;
-    uint8 checksum ;
-    uint8 index ;
 } Message;
 
 
@@ -39,13 +36,13 @@ private:
     uint8   state ;
     uint8   myID ;
     uint8   byteCounter ;
-    uint8   lastOPC ;
-    uint8   moduleCount ;
+    uint8   messageCount ;
     uint8   messageCounter ;
     uint8   length ;
     uint8   index ;
+
     uint8   checkChecksum() ;
-    void    processMessage() ;
+    void    processOutputs() ;
 
     Message message ;
 };
@@ -65,7 +62,7 @@ private:
     uint8   pinNumber ;
     uint8   iodir ;
     uint8   state ; // contains active state (or dutycycle) of GPIO pin
-}
+} ;
 
 
 
@@ -81,13 +78,13 @@ extern void sendInput(   uint8 , uint8 ) ;
 */
 
 
-
-extern void notifySetMode(           uint8      mode ) __attribute__ ((weak)) ;
-extern void notifyConfServo(         uint8     state ) __attribute__ ((weak)) ;
-extern void notifyInput(  uint8 pin, uint8     state ) __attribute__ ((weak)) ;
-extern void notifyOutput( uint8 pin, uint8     state ) __attribute__ ((weak)) ;
-extern void notifyServo(  uint8 obj, uint8     state ) __attribute__ ((weak)) ;
-extern void notifyPWM(    uint8 pin, uint8 dutyCycle ) __attribute__ ((weak)) ;
+extern uint8    notifyGetPayload(  uint8, uint8 ) ;
+extern void     notifySetMode(     uint8        ) __attribute__ ((weak)) ;
+extern void     notifySetOutput(   uint8, uint8 ) __attribute__ ((weak)) ;
+extern void     notifySetPwm(      uint8, uint8 ) __attribute__ ((weak)) ;
+extern void     notifySetServo(    uint8, uint8 ) __attribute__ ((weak)) ;
+extern void     notifyServoConfig( uint8, uint8 ) __attribute__ ((weak)) ;
+extern void     notifySetData(     Message      ) __attribute__ ((weak)) ; // ptr
 // todo, add configure servo command
 
 #endif

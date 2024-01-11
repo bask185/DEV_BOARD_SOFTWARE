@@ -124,17 +124,71 @@ void setup()
     //     if( state == 0 ) nPCF ++ ;          // PCF found, increment counter.
     //     else break ;
     // }
-    pinMode(2, OUTPUT ) ;
+    pinMode(13, OUTPUT ) ;
+    digitalWrite(13,LOW) ;
 }
 
 void loop()
 {
     bus.transceiveMessage() ;
+
     // receiveMessage() ;
     // debounceSwitches() ;
     // processSwitches() ;
     // processPCF() ;
     // sweepServos() ;
+}
+
+/* application is to provide payload information on given index 
+function should be exited ASAP */
+uint8 notifyGetPayload( uint8 OPCODE, uint8 index )
+{
+    Serial.print("NOTIFY GET PAYLOAD ");
+    printNumberln( "OPCODE: ", OPCODE ) ;
+
+    // if( index == 1 ) { printNumberln( "Payload @ index: ", index ) ; return 0x81 ;}  
+    // if( index == 2 ) { printNumberln( "Payload @ index: ", index ) ; return 0x82 ;}  
+    // if( index == 3 ) { printNumberln( "Payload @ index: ", index ) ; return 0x83 ;}  
+    
+    return 0x00 ;
+}
+
+
+void notifySetOutput( uint8 pin, uint8 state )
+{
+    printNumber_("setting pin #", pin ) ;
+    printNumberln("state: ", state ) ;
+    digitalWrite(pin,state);
+}
+
+void notifySetPwm( uint8 pin, uint8 dutycycle )
+{
+    printNumber_("setting PWM on pin #", pin ) ;
+    printNumberln("dutycycle: ", dutycycle ) ;
+}
+
+void notifyServoConfig()
+{
+}
+
+/*9
+   uint8 payload[16] ; // max possible length
+    uint8 OPC ;
+    uint8 length ;
+    uint8 checksum ;
+    uint8 index ;
+*/
+
+void notifySetData( Message message )
+{
+    Serial.println( "NOTIFY SET DATA") ;
+    printNumberln( "message length: ", message.length ) ;
+    printNumberln( "OPCODE : ", message.payload[0] ) ;
+    for( int i = 4 ; i < message.length - 1 ; i ++ )
+    {
+        printNumber_("Payload: ", message.payload[i] ) ;
+        printNumberln("@ index: ",i) ;
+    }
 }
 
 /*
