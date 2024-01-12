@@ -1,5 +1,4 @@
-#include "JACK_OF_ALL_TRADES.h"
-#include "src/TSCbus.h"
+#include "BOARDS.h"
 
 
 // NOTE, all all board info here?
@@ -14,6 +13,13 @@
  7   uint8   pot2HB ;
  8   uint8   pot2LB ;
 */
+
+Message BOARD::getMessage() // make pointer or so
+{
+    return message ;
+}
+
+
 
 JACK_OF_ALL_TRADES::JACK_OF_ALL_TRADES()
 {
@@ -57,7 +63,3 @@ uint8 JACK_OF_ALL_TRADES::getPWM( uint8 index )           // can be called from 
     return 0 ;
 }
 
-Message JACK_OF_ALL_TRADES::getMessage() // make pointer or so
-{
-    return message ;
-}

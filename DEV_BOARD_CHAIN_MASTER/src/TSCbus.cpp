@@ -34,7 +34,9 @@ This allow slave to keep INPUTS up to date so no time is wasted during transmiss
 Same is true for servo objects. These need configurations as well.
 Servo objects need to make use of EEPROM. A max of 10 is allowed due to servo library
 
-
+SCANNING IO bus. If the master performs an IO scan. It transmitts a module count of 0.
+every slave should add a byte to this message, increasing it's length.
+When the master receives the message back. The slave ID tells how many slaves are present followed by what which slave is.
 
 
 Messages:
@@ -164,6 +166,70 @@ uint8 TSCbus::checkChecksum()
     return 1 ;
 }
 
+uint8 TSCbus::transmitt()
+{
+    switch( transmittState )
+    {
+    case idle:
+        if( 1 /*transmissionAllows*/ ) state = sendSlaveID ; // may become preamble
+        break ;
+
+    case sendPreamble: // NOT YET IN USE
+        Serial.write( 0xFF ) ;
+        Serial.write( 0xFF ) ;
+        Serial.write( 0xFF ) ;
+        Serial.write( 0xFF ) ;
+        Serial.write( 0xFF ) ;
+        Serial.write( 0xFF ) ;
+        break ;
+
+    case sendSlaveID:
+        Serial.write( 1 ) ;
+        // take decision, are we IO scan or normal?
+        if( scanBus )
+        {   scanBus = 0 ;
+
+            state = finised ;
+        }
+        else
+        {
+            state = sendModuleCount ;
+        }
+        break ;
+
+    case sendModuleCount:
+        Serial.write( slaveCount ) ; // we either get this number from predefined message or a bus readout
+        state = sendMessage ;
+        loadMessage( slaveCounter ) ; // load the message
+        length = message.OPCODE & 0x0F ;
+        slaveCounter   = 0 ;
+        byteCounter = 0 ;
+        break ;
+
+    case sendMessage:
+        Serial.write( message.payload[ byteCounter ] ) ;
+        if( ++ byteCounter == length )
+        {
+            // last byte of message sent.
+            slaveCounter ++ ;
+            if( ++ slaveCounter == slaveCount ) // all messages sent
+            { 
+                state = finished ;
+            }
+            else
+            {
+                byteCounter = 0 ;
+                loadMessage( slaveCounter ) ;    
+            }           
+        }
+        break ;
+
+    case finished:
+
+        break ;
+    }
+}
+
 void TSCbus::transceiveMessage() // <-- slave unit only
 {
 
@@ -188,8 +254,14 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     case getMessageCount:                // get the amount of messages inside this package
         messageCount = b ;
 
-        if( messageCount == 0 ) state = wait4ID ; // if the module count is 0, the master is inspecting the bus and can count slaves.
-        else                    state = getOPCODE ;        // otherwise, get the message length
+        if( messageCount == 0 )
+        {
+            IO_SCAN = 1  ; // if the module count is 0, the master is inspecting the bus and can count slaves.
+            // if my ID is 1 there wont be more bytes
+            // if my ID is greater than 1, I can expect type bytes of slaves before me
+            state = wait4ID ;
+        }
+        else  state = getOPCODE ;        // otherwise, get the message length
 
         goto relayByte ;
 

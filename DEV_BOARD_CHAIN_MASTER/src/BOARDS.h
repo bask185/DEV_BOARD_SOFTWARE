@@ -1,5 +1,6 @@
 #include <Arduino.h>
-#include "src/macros.h"
+#include "macros.h"
+#include "TSCbus.h"
 /*
     this class is ment to control IO with. 
     I think the class should interface between control functions and the packet manager.

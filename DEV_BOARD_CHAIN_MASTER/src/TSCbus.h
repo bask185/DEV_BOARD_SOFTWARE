@@ -31,6 +31,7 @@ class TSCbus
 public:
     TSCbus();
     void transceiveMessage() ;
+    
 
 private:
     uint8   state ;
@@ -40,6 +41,7 @@ private:
     uint8   messageCounter ;
     uint8   length ;
     uint8   index ;
+    uint8   transmittBuffer[64] ;
 
     uint8   checkChecksum() ;
     void    processOutputs() ;
