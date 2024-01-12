@@ -19,12 +19,12 @@ struct
 
 // IO CONTROL message as follows:
 // OUTPUTS
-/* byte 0 */    uint8 PWM1 ;                                
-/* byte 1 */    uint8 PWM2 ;
-/* byte 2 */    uint8 PWM3 ;
-/* byte 3 */    uint8 outputs ; // SSSSRRRR  Servo1-4 Relay
+/* byte 0 *     uint8 PWM1 ;   // obsolete, values are processed to analogWrite after transceiving   */
+/* byte 1 *     uint8 PWM2 ; */
+/* byte 2 *     uint8 PWM3 ; */
+/* byte 3 *     uint8 outputs ; // SSSSRRRR  Servo1-4 Relay */
 
-// INPUTS
+// INPUTS  (all are used)
 /* byte 4 */    uint8 switches ;// xxxxSSSS  (sw4-Sw1)
 /* byte 5 */    uint8 pot1HB ;  // xxxxxxPP
 /* byte 6 */    uint8 pot1LB ;  // PPPPPPPP
@@ -37,20 +37,22 @@ const int PCFaddress = 0x20 ;
 
 uint8   currentServoIndex ;
 
+const int nRelays = 4 ;
 const int nServos = 4 ;
+
 #ifdef HAS_FROG_RELAY
 ServoSweep servo[nServos] =
 {
-    ServoSweep( servo1, 80, 100, 20, 1 ),
-    ServoSweep( servo2, 80, 100, 20, 1 ),
-    ServoSweep( servo3, 80, 100, 20, 1 ),
-    ServoSweep( servo4, 80, 100, 20, 1 ),
+    ServoSweep( servo1, 80, 100, 20, 1, relay1 ), // with relay
+    ServoSweep( servo2, 80, 100, 20, 1, relay2 ),
+    ServoSweep( servo3, 80, 100, 20, 1, relay3 ),
+    ServoSweep( servo4, 80, 100, 20, 1, relay4 ),
 } ;
 #else
 
 ServoSweep servo[nServos] =
 {
-    ServoSweep( servo1, 80, 100, 20, 1 ),
+    ServoSweep( servo1, 80, 100, 20, 1 ), // without relay
     ServoSweep( servo2, 80, 100, 20, 1 ),
     ServoSweep( servo3, 80, 100, 20, 1 ),
     ServoSweep( servo4, 80, 100, 20, 1 ),
@@ -124,9 +126,6 @@ void setup()
         servo[i].useEEPROM() ; 
         servo[i].begin() ;
     }
-
-    nPCF = 0 ;
-    uint8 state ;
 }
 
 void loop()
@@ -163,6 +162,9 @@ void notifySetData( Message *message )
                                                   // 2 = servos with frog
         me.servoConf    = message -> payload[1] ; // 1 = decrement last set servo
                                                   // 2 = increment last set servo
+
+        // if( me.servoConf == 1 ) servo[lastSetServo].decrement() ;
+        // if( me.servoConf == 2 ) servo[lastSetServo].increment() ;
     }
 
     if( message.OPCODE == OPC_SET_DATA )    // command to set ALL outputs
@@ -171,18 +173,22 @@ void notifySetData( Message *message )
         analogWrite( PWM2, message -> payload[1] ) ; printNumberln("setting PWM 2: ", message -> payload[1] ) ;
         analogWrite( PWM3, message -> payload[2] ) ; printNumberln("setting PWM 3: ", message -> payload[2] ) ;
 
-        me.outputs =       message -> payload[3] ;// SSSSRRRR  Servo1-4 Relay1-4
+        uint8 outputs = message -> payload[3] ;// SSSSRRRR  Servo1-4 Relay1-4
 
-        servo[0].tglState( (me.outputs >> 7) & 1 ) ; Serial.println("toggling servo 1" ) ; 
-        servo[1].tglState( (me.outputs >> 6) & 1 ) ; Serial.println("toggling servo 2" ) ; 
-        servo[2].tglState( (me.outputs >> 5) & 1 ) ; Serial.println("toggling servo 3" ) ; 
-        servo[3].tglState( (me.outputs >> 4) & 1 ) ; Serial.println("toggling servo 4" ) ;
+        for( int i = 0 ; i < nServos ; i ++ )
+        {
+            uint8 state     = (outputs >> (7-i)) & 0b1 ;
+            uint8 prevState = servo[i].getState() ;
+            servo[i].setState( state ) ; 
+        }
 
     #ifndef HAS_FROG_RELAY
-        digitalWrite( relay1, (me.outputs >> 3) & 1 ) ; printNumberln("setting relay 1: ", (me.outputs >> 3) & 1 ) ;
-        digitalWrite( relay2, (me.outputs >> 2) & 1 ) ; printNumberln("setting relay 2: ", (me.outputs >> 2) & 1 ) ;
-        digitalWrite( relay3, (me.outputs >> 1) & 1 ) ; printNumberln("setting relay 3: ", (me.outputs >> 1) & 1 ) ;
-        digitalWrite( relay4, (me.outputs >> 0) & 1 ) ; printNumberln("setting relay 4: ", (me.outputs >> 0) & 1 ) ;
+        for( int i = 0 ; i < nRelays ; i ++ )
+        {
+            digitalWrite( relay1+i, (outputs >> (3-i)) & 1 ) ; 
+            printNumberln("setting relay : ", i ) ;
+        }
+
     #endif
     }
 }
