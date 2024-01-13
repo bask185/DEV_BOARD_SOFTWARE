@@ -150,10 +150,23 @@ enum states
 {
     wait4ID,
     getMessageCount,
+    passOnTypeBytes,
     getOPCODE,
-    transceiveData,
+    processData,
     notMyBytes,
     getChecksum,
+} ;
+
+enum transmittStates
+{
+    init,
+    sendPreamble,
+    sendSlaveID,
+    sendModuleCount,
+    loadMessage,
+    sendMessage,
+    pickNextMessage,
+    finished,
 } ;
 
 TSCbus::TSCbus()
@@ -166,12 +179,16 @@ uint8 TSCbus::checkChecksum()
     return 1 ;
 }
 
-uint8 TSCbus::transmitt()
+
+uint8 TSCbus::drive()
 {
+    if( Serial.availableForWrite() == 0 ) return ; // transmitt buffer Full? return to avoid blocking write.
+    
     switch( transmittState )
     {
-    case idle:
-        if( 1 /*transmissionAllows*/ ) state = sendSlaveID ; // may become preamble
+    case init:
+        slaveCounter   = 0 ;   
+        if( 1 /*transmissionAllowed*/ ) state = sendSlaveID ; // may become preamble
         break ;
 
     case sendPreamble: // NOT YET IN USE
@@ -184,54 +201,60 @@ uint8 TSCbus::transmitt()
         break ;
 
     case sendSlaveID:
-        Serial.write( 1 ) ;
-        // take decision, are we IO scan or normal?
-        if( scanBus )
-        {   scanBus = 0 ;
-
-            state = finised ;
-        }
-        else
-        {
-            state = sendModuleCount ;
-        }
+        Serial.write( 1 ) ; // first slave has ID 1
+        state = sendModuleCount ;
         break ;
 
     case sendModuleCount:
-        Serial.write( slaveCount ) ; // we either get this number from predefined message or a bus readout
-        state = sendMessage ;
+        if( scanningBus )
+        {
+            Serial.write( 0 ) ; // a count of 0 means this is a bus scan. There will be no follow up bytes and slaves must add their types to the chain
+            state = finished ;
+        }
+        else
+        {
+            Serial.write( slaveCount ) ; // we either get this number from predefined message or a bus readout
+            state = loadMessage ;
+        }
+        break ;
+    
+    case loadMessage:
         loadMessage( slaveCounter ) ; // load the message
         length = message.OPCODE & 0x0F ;
-        slaveCounter   = 0 ;
         byteCounter = 0 ;
+        state  = sendMessage ;
         break ;
 
     case sendMessage:
-        Serial.write( message.payload[ byteCounter ] ) ;
-        if( ++ byteCounter == length )
-        {
-            // last byte of message sent.
-            slaveCounter ++ ;
-            if( ++ slaveCounter == slaveCount ) // all messages sent
-            { 
-                state = finished ;
-            }
-            else
-            {
-                byteCounter = 0 ;
-                loadMessage( slaveCounter ) ;    
-            }           
+        Serial.write( message.payload[ byteCounter ] ) ; // send message for a slave.
+        if( ++ byteCounter == length ) state = pickNextMessage ;
+        break ;
+
+    case pickNextMessage:
+        if( ++ slaveCounter == slaveCount ) // all messages sent
+        { 
+            state = finished ;
         }
+        else
+        {
+            byteCounter = 0 ;
+            loadMessage( slaveCounter ) ;    
+        }           
         break ;
 
     case finished:
-
+        // do something or not?
+        state = init ;
         break ;
     }
 }
 
-void TSCbus::transceiveMessage() // <-- slave unit only
-{
+/**
+ * @brief receives, process and relays incomming bytes
+ * The master does not need to relay bytes but merely process input variables
+ */
+
+void TSCbus::transceiveMessage() 
 
     if( Serial.available() == 0 ) return ;
 
@@ -243,7 +266,7 @@ void TSCbus::transceiveMessage() // <-- slave unit only
     {
     case wait4ID:                    // wait for first byte
         myID = b ;                         // the first byte of the message carries my ID
-
+        index = 0 ;
         messageCounter = 1 ;               // reset the byte counter
 
         state = getMessageCount ;
@@ -256,14 +279,30 @@ void TSCbus::transceiveMessage() // <-- slave unit only
 
         if( messageCount == 0 )
         {
-            IO_SCAN = 1  ; // if the module count is 0, the master is inspecting the bus and can count slaves.
+            //IO_SCAN = 1  ; // if the module count is 0, the master is inspecting the bus and can count slaves.
             // if my ID is 1 there wont be more bytes
             // if my ID is greater than 1, I can expect type bytes of slaves before me
-            state = wait4ID ;
+            if( myID > 1 ) 
+            {
+                state = wait4ID ;
+            }
+            else
+            {
+                state = passOnTypeBytes ;
+            }
         }
         else  state = getOPCODE ;        // otherwise, get the message length
 
         goto relayByte ;
+
+    case passOnTypeBytes:         // pass on board type bytes from previous slaves
+        if( ++index == myID ) 
+        {
+            if( notifyGetBoardType ) b = notifyGetBoardType() ; // add 
+            state = wait4ID ;
+        }
+        goto relayByte ;
+        
 
 
 // SLAVE NODE
@@ -279,15 +318,14 @@ void TSCbus::transceiveMessage() // <-- slave unit only
         // message is for me
         message.OPCODE = b & 0xF0 ;
         message.length = length ;
-        state = transceiveData ;
+        state = processData ;
         goto relayByte ;
 
     case notMyBytes:
         if( ++ index == length ) state = getChecksum ; 
         goto relayByte ;
 
-
-    case transceiveData:
+    case processData:
         if( notifyGetPayload )  // for inputs OR input states on the byte
         {
             b |= notifyGetPayload( message.OPCODE, index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well

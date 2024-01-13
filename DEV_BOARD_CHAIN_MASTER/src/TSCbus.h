@@ -26,21 +26,27 @@ typedef struct Mess
 } Message;
 
 
+
+
 class TSCbus
 {
 public:
     TSCbus();
     void transceiveMessage() ;
-    
+    void drive() ;
 
 private:
-    uint8   state ;
+    uint8   state           = 0 ; // transceiving
+    uint8   transmittState  = 0 ; // transmitting (master)
+    uint8   scanningBus ;         // flag to initiate bus scan
     uint8   myID ;
     uint8   byteCounter ;
     uint8   messageCount ;
     uint8   messageCounter ;
     uint8   length ;
     uint8   index ;
+    uint8   slaveCount ;
+    uint8   slaveCounter ;
     uint8   transmittBuffer[64] ;
 
     uint8   checkChecksum() ;
@@ -51,6 +57,7 @@ private:
 
 
 extern uint8    notifyGetPayload(  uint8, uint8 ) __attribute__ ((weak)) ;
+extern uint8    notifyGetBoardType( )             __attribute__ ((weak)) ;
 extern void     notifySetMode(     uint8        ) __attribute__ ((weak)) ;
 extern void     notifySetOutput(   uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifySetPwm(      uint8, uint8 ) __attribute__ ((weak)) ;
