@@ -150,8 +150,9 @@ enum states
 {
     wait4ID,
     getMessageCount,
-    passOnTypeBytes,
+    IOscan,
     getOPCODE,
+    getLength,
     processData,
     notMyBytes,
     getChecksum,
@@ -255,7 +256,7 @@ uint8 TSCbus::drive()
  */
 
 void TSCbus::transceiveMessage() 
-
+{
     if( Serial.available() == 0 ) return ;
 
     uint8 b = Serial.read() ; // remove '0'
@@ -277,48 +278,48 @@ void TSCbus::transceiveMessage()
     case getMessageCount:                // get the amount of messages inside this package
         messageCount = b ;
 
-        if( messageCount == 0 )
-        {
-            //IO_SCAN = 1  ; // if the module count is 0, the master is inspecting the bus and can count slaves.
-            // if my ID is 1 there wont be more bytes
-            // if my ID is greater than 1, I can expect type bytes of slaves before me
-            if( myID > 1 ) 
-            {
-                state = wait4ID ;
-            }
-            else
-            {
-                state = passOnTypeBytes ;
-            }
+        if( messageCount > 0 )
+        { 
+            state = getOPCODE ;
+            goto relayByte ;
         }
-        else  state = getOPCODE ;        // otherwise, get the message length
+        state = IOscan ; 
+    // fall through 
 
-        goto relayByte ;
-
-    case passOnTypeBytes:         // pass on board type bytes from previous slaves
+    case IOscan:         // pass on board type bytes from previous slaves NOTE TEST ME
         if( ++index == myID ) 
         {
-            if( notifyGetBoardType ) b = notifyGetBoardType() ; // add 
+            if( notifyGetBoardType ) b = notifyGetBoardType() ; // every board should add it's own type to the message.
             state = wait4ID ;
         }
         goto relayByte ;
         
 
-
-// SLAVE NODE
     case getOPCODE:
         index =  0 ;                        // reset index
         length = b & 0x0F ;                 // get the length for this OPCODE message
 
         if( messageCounter != myID )        // if not my message..
         {
-            state = notMyBytes ;
+            if( length == 0x0F ) state = getLength ;  // if length is 16, the following byte will contain a new message length.
+            else                 state = notMyBytes ;
             goto relayByte ;
         }
         // message is for me
         message.OPCODE = b & 0xF0 ;
-        message.length = length ;
-        state = processData ;
+        
+        if( length == 0x0F ) state = getLength ;   // if length is 16, the following byte will contain a new message length.
+        else
+        {
+            message.length = length ;
+            state = processData ;
+        }
+        goto relayByte ;
+
+    case getLength:
+        message.length = length = b ;
+        if( messageCounter != myID ) state = notMyBytes ;
+        else                         state = processData ;
         goto relayByte ;
 
     case notMyBytes:
@@ -339,7 +340,6 @@ void TSCbus::transceiveMessage()
         message.payload[index] = b ;
         if( !checkChecksum() ) ; // do something with an error or so.
 
-
         if( messageCounter ++ == messageCount ) 
         {
             processOutputs() ;
@@ -349,11 +349,11 @@ void TSCbus::transceiveMessage()
         {
             state = getOPCODE ;        // there are more messages in this packet
         }
-
         // fallthrough
 
     relayByte:
         Serial.write( b ) ;
+        // Serial.println( b ) ;
         break ;
     }
 }
@@ -374,6 +374,7 @@ void TSCbus::processOutputs()
     case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[0], message.payload[1] ) ; break ;
     case 0x80: if(    notifySetServo )    notifySetServo( message.payload[0], message.payload[1] ) ; break ; 
     case 0x90: if(     notifySetData )     notifySetData( &message ) ; break ; // we send a pointer to the message object. The function can spoon out the raw data and do application stuff withit
+    case 0x60: if(   notifyConfigPin )   notifyConfigPin( &message ) ; break ; 
     }
 }
 

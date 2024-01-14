@@ -106,13 +106,7 @@ public:
     void    setPWM(   uint8 pin, uint8 val ) ;
 
 private:
-    Servo   servo[12] ;
-    uint8   servoIndex[12] =
-    {
-        255,255,255,255,
-        255,255,255,255,
-        255,255,255,255 
-    } ;
+    
 
     void getPin( uint8 pin ) ;
 } ;

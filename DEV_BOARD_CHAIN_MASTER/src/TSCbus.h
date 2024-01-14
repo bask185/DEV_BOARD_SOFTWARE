@@ -20,7 +20,7 @@ extern uint8 receiveMessage() ;
 
 typedef struct Mess
 {
-    uint8 payload[16] ; // maximum length is to be determened
+    uint8 payload[64] ; // maximum length is to be determened
     uint8 length ;
     uint8 OPCODE ;
 } Message;
@@ -64,5 +64,6 @@ extern void     notifySetPwm(      uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifySetServo(    uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifyServoConfig( uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifySetData(     Message*     ) __attribute__ ((weak)) ;
+extern void     notifyConfigPin(   Message*     ) __attribute__ ((weak)) ;
 
 #endif
