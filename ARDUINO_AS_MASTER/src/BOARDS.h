@@ -98,7 +98,9 @@ class ARDUINO_BOARD public BOARD
 {
 public:
     ARDUINO_BOARD() ;
-
+    // note a manager should be used in order to update input pins on a regular basis
+    void    configurePins() ; // may be done in the constructor?
+    void    pinMode( uint8 pin, uint8 mode ) ;
     void    setOutput( uint8 pin, uint8 val ) ;
     uint8   getInput(  uint8 pin  ) ;
     uint16  getAnalogInput(  uint8 pin ) ;

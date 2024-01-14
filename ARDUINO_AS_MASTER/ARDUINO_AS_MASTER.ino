@@ -1,12 +1,27 @@
 #include "src/macros.h"
 #include "src/TSCbus.h"
 #include "src/BOARDS.h"
-#include <Servo.h>
 
-ARDUINO_BOARD me ;
+
+/*
+    goal of project;
+    This software must use the arduino board type object and the TSCbus to interract with an arduino slave unit.
+*/
+ARDUINO_BOARD slave1, slave2 ;
 TSCbus bus ;
 
+void notifyloadMessage( Message *message, uint8 slaveIndex )
+{
+    if( slaveIndex == 0 ) // first slave
+    {
 
+    }
+    if( slaveIndex == 1 ) // second slave
+    {
+
+    }
+    message->OPCODE = 
+}
 
 void setup()
 {
@@ -15,5 +30,5 @@ void setup()
 
 void loop()
 {
-    bus.transceiveMessage() ;
+    bus.drive() ;
 }

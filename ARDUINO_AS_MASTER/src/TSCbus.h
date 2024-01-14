@@ -11,10 +11,11 @@ const int OPC_SET_PWM           = 0x33 ;
 const int OPC_GET_INPUT         = 0x42 ;
 const int OPC_GET_ANALOG        = 0x53 ;
 const int OPC_GET_DATA          = 0x60 ; // length is variable
-const int OPC_CONF_IO           = 0x60 ; // length is variable
+const int OPC_CONF_IO           = 0x6F ; // must be atleast 16 byte message
 const int OPC_CONF_SERVO        = 0x76 ;
 const int OPC_GET_MODULE_TYPE   = 0x82 ;
 const int OPC_SET_DATA          = 0x90 ; // length is variable
+const int OPC_SET_SERVO         = 0xA3 ;
 
 extern uint8 receiveMessage() ;
 
@@ -47,6 +48,7 @@ private:
     uint8   index ;
     uint8   slaveCount ;
     uint8   slaveCounter ;
+    uint8   configCounter ;
     uint8   transmittBuffer[64] ;
 
     uint8   checkChecksum() ;
@@ -65,5 +67,8 @@ extern void     notifySetServo(    uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifyServoConfig( uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifySetData(     Message*     ) __attribute__ ((weak)) ;
 extern void     notifyConfigPin(   Message*     ) __attribute__ ((weak)) ;
+extern void     notifyloadMessage( uint8        ) __attribute__ ((weak)) ;
+extern void     notifyReadInput( uint8, uint8   ) __attribute__ ((weak)) ;
+extern void     notifyReadAnalog( uint8, uint16 ) __attribute__ ((weak)) ;
 
 #endif

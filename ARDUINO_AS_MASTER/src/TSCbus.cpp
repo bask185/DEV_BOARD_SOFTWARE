@@ -220,7 +220,7 @@ uint8 TSCbus::drive()
         break ;
     
     case loadMessage:
-        loadMessage( slaveCounter ) ; // load the message
+        if(notifyloadMessage) notifyloadMessage( &message, slaveCounter ) ; // load the message
         length = message.OPCODE & 0x0F ;
         byteCounter = 0 ;
         state  = sendMessage ;
@@ -239,7 +239,7 @@ uint8 TSCbus::drive()
         else
         {
             byteCounter = 0 ;
-            loadMessage( slaveCounter ) ;    
+            if(notifyloadMessage) notifyloadMessage( &message, slaveCounter ) ;    
         }           
         break ;
 
@@ -352,6 +352,7 @@ void TSCbus::transceiveMessage()
         // fallthrough
 
     relayByte:
+        // if master do not relay bytes
         Serial.write( b ) ;
         // Serial.println( b ) ;
         break ;
