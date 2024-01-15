@@ -160,7 +160,7 @@ enum states
 
 enum transmittStates
 {
-    init,
+    start,
     sendPreamble,
     sendSlaveID,
     sendModuleCount,
@@ -181,13 +181,13 @@ uint8 TSCbus::checkChecksum()
 }
 
 
-uint8 TSCbus::drive()
+void TSCbus::drive()
 {
     if( Serial.availableForWrite() == 0 ) return ; // transmitt buffer Full? return to avoid blocking write.
     
     switch( transmittState )
     {
-    case init:
+    case start:
         slaveCounter   = 0 ;   
         if( 1 /*transmissionAllowed*/ ) state = sendSlaveID ; // may become preamble
         break ;
@@ -220,7 +220,7 @@ uint8 TSCbus::drive()
         break ;
     
     case loadMessage:
-        loadMessage( slaveCounter ) ; // load the message
+        if(notifyLoadMessage) notifyLoadMessage( slaveCounter ) ; // load the message
         length = message.OPCODE & 0x0F ;
         byteCounter = 0 ;
         state  = sendMessage ;
@@ -239,13 +239,13 @@ uint8 TSCbus::drive()
         else
         {
             byteCounter = 0 ;
-            loadMessage( slaveCounter ) ;    
+            if(notifyLoadMessage) notifyLoadMessage( slaveCounter ) ;    
         }           
         break ;
 
     case finished:
         // do something or not?
-        state = init ;
+        state = start ;
         break ;
     }
 }

@@ -17,28 +17,31 @@
 
 message payload;
 // OUTPUTS
+/* OPC_SET_DATA
 /* byte 0 *     uint8 PWM1 ;   // obsolete, values are processed to analogWrite after transceiving   */
 /* byte 1 *     uint8 PWM2 ; */
 /* byte 2 *     uint8 PWM3 ; */
 /* byte 3 *     uint8 outputs ; // SSSSRRRR  Servo1-4 Relay */
 
 // INPUTS  (all are used)
-/* byte 4 * /    uint8 switches ;// xxxxSSSS  (sw4-Sw1)
-/* byte 5 * /    uint8 pot1HB ;  // xxxxxxPP
-/* byte 6 * /    uint8 pot1LB ;  // PPPPPPPP
-/* byte 7 * /    uint8 pot2HB ;  // xxxxxxPP
-/* byte 8 * /    uint8 pot2LB ;  // PPPPPPPP */
+/* OPC_GET_DATA
+/* byte 0 * /    uint8 switches ;// xxxxSSSS  (sw4-Sw1)
+/* byte 1 * /    uint8 pot1HB ;  // xxxxxxPP
+/* byte 2 * /    uint8 pot1LB ;  // PPPPPPPP
+/* byte 3 * /    uint8 pot2HB ;  // xxxxxxPP
+/* byte 4 * /    uint8 pot2LB ;  // PPPPPPPP */
 
 class BOARD
 {
 public:
-    Message getMessage() ;
+    Message* getMessage() ;
+    void relayMessage( Message* ) ;
+    Message  message ; 
 
 private:
-    Message message ; 
-}
+} ;
 
-class STEPPER_MOTOR_BOARD public BOARD
+class STEPPER_MOTOR_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -46,7 +49,7 @@ public:
 private:
 };
 
-class DIGITAL_INPUT_BOARD public BOARD
+class DIGITAL_INPUT_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -54,7 +57,7 @@ public:
 private:
 };
 
-class DIGITAL_OUTPUT_BOARD public BOARD
+class DIGITAL_OUTPUT_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -62,7 +65,7 @@ public:
 private:
 };
 
-class ANALOG_INPUT_BOARD public BOARD
+class ANALOG_INPUT_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -70,7 +73,15 @@ public:
 private:
 };
 
-class ENCODER_BOARD public BOARD
+class ANALOG_OUTPUT_BOARD: public BOARD
+{
+public:
+    /* constructor */
+    // add public messages to set and write to message payloads
+private:
+};
+
+class ENCODER_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -79,7 +90,7 @@ private:
 };
 
 
-class JACK_OF_ALL_TRADES public BOARD //
+class JACK_OF_ALL_TRADES: public BOARD //
 {
 public:
     JACK_OF_ALL_TRADES() ;
@@ -94,7 +105,7 @@ private:
     
 } ;
 
-class ARDUINO_BOARD public BOARD
+class ARDUINO_BOARD: public BOARD
 {
 public:
     ARDUINO_BOARD() ;

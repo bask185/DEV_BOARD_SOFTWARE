@@ -156,7 +156,7 @@ uint8 notifyGetPayload( uint8 OPCODE, uint8 index )
 // UPDATE OUTPUTS
 void notifySetData( Message *message )
 {
-    if( message.OPCODE == OPC_CONF_IO )
+    if( message->OPCODE == OPC_CONF_IO )
     {
         me.mode         = message -> payload[0] ; // 1 = servos without frog
                                                   // 2 = servos with frog
@@ -167,7 +167,7 @@ void notifySetData( Message *message )
         // if( me.servoConf == 2 ) servo[lastSetServo].increment() ;
     }
 
-    if( message.OPCODE == OPC_SET_DATA )    // command to set ALL outputs
+    if( message->OPCODE == OPC_SET_DATA )    // command to set ALL outputs
     {
         analogWrite( PWM1, message -> payload[0] ) ; printNumberln("setting PWM 1: ", message -> payload[0] ) ;
         analogWrite( PWM2, message -> payload[1] ) ; printNumberln("setting PWM 2: ", message -> payload[1] ) ;

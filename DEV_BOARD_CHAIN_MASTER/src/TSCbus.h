@@ -65,5 +65,6 @@ extern void     notifySetServo(    uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifyServoConfig( uint8, uint8 ) __attribute__ ((weak)) ;
 extern void     notifySetData(     Message*     ) __attribute__ ((weak)) ;
 extern void     notifyConfigPin(   Message*     ) __attribute__ ((weak)) ;
+extern void     notifyLoadMessage( uint8        ) __attribute__ ((weak)) ;
 
 #endif

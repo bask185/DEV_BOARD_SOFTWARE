@@ -160,26 +160,57 @@ enum states
 
 enum transmittStates
 {
-    init,
+    start,
     sendPreamble,
     sendSlaveID,
     sendModuleCount,
     loadMessage,
     sendMessage,
+    addChecksum,
     pickNextMessage,
     finished,
 } ;
 
-TSCbus::TSCbus()
+TSCbus::TSCbus( uint8 mode )
 {
+    meMode = mode ;
 }
 
 
 uint8 TSCbus::checkChecksum()
 {
-    return 1 ;
+    uint8 checksum = message.OPCODE ;
+    for( int i = 0 ; i < message.length ; i ++ )
+    {
+        checksum ^= message.payload[i] ;
+    }
+    return ( checksum == message.checksum ) ;
 }
 
+uint8 TSCbus::assembleChecksum()
+{
+    uint8 checksum = message.OPCODE ;
+    for( int i = 0 ; i < message.length ; i ++ )
+    {
+        checksum ^= message.payload[i] ;
+    }
+    return checksum ;
+}
+
+static uint8 calculateLength( uint8 OPCODE )
+{
+    switch( OPCODE & 0b111 )
+    {
+    case 000: return   1 ;
+    case 001: return   2 ;
+    case 010: return   4 ;
+    case 011: return   6 ;
+    case 100: return   8 ;
+    case 101: return  16 ;
+    case 110: return  20 ;
+    case 111: return 255 ; // 255 means follow byte is comming
+    }
+}
 
 uint8 TSCbus::drive()
 {
@@ -187,10 +218,10 @@ uint8 TSCbus::drive()
     
     switch( transmittState )
     {
-    case init:
+    case start:
         slaveCounter   = 0 ;   
         if( 1 /*transmissionAllowed*/ ) state = sendSlaveID ; // may become preamble
-        break ;
+        return 0 ;
 
     case sendPreamble: // NOT YET IN USE
         Serial.write( 0xFF ) ;
@@ -199,12 +230,12 @@ uint8 TSCbus::drive()
         Serial.write( 0xFF ) ;
         Serial.write( 0xFF ) ;
         Serial.write( 0xFF ) ;
-        break ;
+        return 0 ;
 
     case sendSlaveID:
         Serial.write( 1 ) ; // first slave has ID 1
         state = sendModuleCount ;
-        break ;
+        return 0 ;
 
     case sendModuleCount:
         if( scanningBus )
@@ -218,35 +249,44 @@ uint8 TSCbus::drive()
             state = loadMessage ;
         }
         break ;
-    
+   /* 
+SIZE 0x0 000 = 1 // just OPCCODE
+SIZE 0x1 001 = 2
+SIZE 0x2 010 = 4
+SIZE 0x3 011 = 6
+SIZE 0x4 100 = 8
+SIZE 0x5 101 = 16
+SIZE 0x6 110 = 20
+    */
+
     case loadMessage:
-        if(notifyloadMessage) notifyloadMessage( &message, slaveCounter ) ; // load the message
-        length = message.OPCODE & 0x0F ;
+        if(notifyLoadMessage) notifyLoadMessage( &message, slaveCounter ) ; // load the message
+        length = calculateLength( message.OPCODE ) ;
+        if( length == 255 ) length = message.payload[0] ;
         byteCounter = 0 ;
         state  = sendMessage ;
-        break ;
+        return 0 ;
 
     case sendMessage:
         Serial.write( message.payload[ byteCounter ] ) ; // send message for a slave.
-        if( ++ byteCounter == length ) state = pickNextMessage ;
-        break ;
+        
+        if( ++ byteCounter == length ) state = addChecksum ;
+        return 0 ;
+
+    case addChecksum:
+        message.checksum = assembleChecksum() ;
+        Serial.write( message.checksum ) ;
+        state = pickNextMessage ;
+        return 0 ;
 
     case pickNextMessage:
-        if( ++ slaveCounter == slaveCount ) // all messages sent
-        { 
-            state = finished ;
-        }
-        else
+        if( ++ slaveCounter != slaveCount ) // not yet every slave done
         {
-            byteCounter = 0 ;
-            if(notifyloadMessage) notifyloadMessage( &message, slaveCounter ) ;    
-        }           
-        break ;
-
-    case finished:
-        // do something or not?
-        state = init ;
-        break ;
+            state = loadMessage ;
+            return 0 ;
+        }
+        state = start ;
+        return 1 ;
     }
 }
 
@@ -277,31 +317,27 @@ void TSCbus::transceiveMessage()
 
     case getMessageCount:                // get the amount of messages inside this package
         messageCount = b ;
-
-        if( messageCount > 0 )
-        { 
-            state = getOPCODE ;
-            goto relayByte ;
-        }
-        state = IOscan ; 
+        state = getOPCODE ;
+        goto relayByte ;
+ 
     // fall through 
 
-    case IOscan:         // pass on board type bytes from previous slaves NOTE TEST ME
-        if( ++index == myID ) 
-        {
-            if( notifyGetBoardType ) b = notifyGetBoardType() ; // every board should add it's own type to the message.
-            state = wait4ID ;
-        }
-        goto relayByte ;
+    // case IOscan:         // pass on board type bytes from previous slaves NOTE OBSOLETE, replaced by OPC_GET_TYPE
+    //     if( ++index == myID ) 
+    //     {
+    //         if( notifyGetBoardType ) b = notifyGetBoardType() ; // every board should add it's own type to the message.
+    //         state = wait4ID ;
+    //     }
+    //     goto relayByte ;
         
 
     case getOPCODE:
-        index =  0 ;                        // reset index
-        length = b & 0x0F ;                 // get the length for this OPCODE message
+        index =  0 ;                                    // reset index
+        length = calculateLength( b ) ;                 // get the length for this OPCODE message
 
-        if( messageCounter != myID )        // if not my message..
+        if( messageCounter != myID && meMode == SLAVE )        // if not my message and I am slave
         {
-            if( length == 0x0F ) state = getLength ;  // if length is 16, the following byte will contain a new message length.
+            if( length == 0xFF ) state = getLength ;  // if length is 16, the following byte will contain a new message length.
             else                 state = notMyBytes ;
             goto relayByte ;
         }
@@ -316,10 +352,11 @@ void TSCbus::transceiveMessage()
         }
         goto relayByte ;
 
-    case getLength:
+    case getLength:                             // if special length byte is processed.
         message.length = length = b ;
-        if( messageCounter != myID ) state = notMyBytes ;
-        else                         state = processData ;
+        if( meMode == MASTER
+        ||  messageCounter == myID ) state = processData ;
+        else                         state = notMyBytes ;
         goto relayByte ;
 
     case notMyBytes:
@@ -327,7 +364,7 @@ void TSCbus::transceiveMessage()
         goto relayByte ;
 
     case processData:
-        if( notifyGetPayload )  // for inputs OR input states on the byte
+        if( notifyGetPayload && (message.OPCODE & IS_INPUT) )  // for inputs OR input states on the byte
         {
             b |= notifyGetPayload( message.OPCODE, index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
         }
@@ -337,12 +374,16 @@ void TSCbus::transceiveMessage()
         goto relayByte ;
 
     case getChecksum:               // NOTE. we could do without checksum.
-        message.payload[index] = b ;
+        message.checksum = b ;
         if( !checkChecksum() ) ; // do something with an error or so.
+
+        if( meMode == MASTER ) relayInputs( messageCounter ) ; // message counter should correspond with board index
 
         if( messageCounter ++ == messageCount ) 
         {
-            processOutputs() ;
+            if( meMode == SLAVE 
+            &&( message.OPCODE & IS_INPUT == 0) ) processOutputs() ; // if I am slave and OPCODE is for OUTPUTS
+            
             state = wait4ID ; // This was the last opcode we had to process, we are finished
         }
         else 
@@ -352,15 +393,14 @@ void TSCbus::transceiveMessage()
         // fallthrough
 
     relayByte:
-        // if master do not relay bytes
-        Serial.write( b ) ;
+        if( meMode == SLAVE ) Serial.write( b ) ; // master does not 'relay' bytes
         // Serial.println( b ) ;
         break ;
     }
 }
 
 /**
- * @brief procces a message after a packet is processed. 
+ * @brief For slaves. Process a message after a packet is processed. 
  * Relevant payloads from message must be processed for outputs 
  * New payloads must be prepared for inputs.
  */
@@ -370,13 +410,23 @@ void TSCbus::processOutputs()
 
     switch( OPCODE )
     {                                                       // pin                   // data
-    case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[0], message.payload[1] ) ; break ; 
-    case 0x30: if(      notifySetPwm )      notifySetPwm( message.payload[0], message.payload[1] ) ; break ; 
-    case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[0], message.payload[1] ) ; break ;
-    case 0x80: if(    notifySetServo )    notifySetServo( message.payload[0], message.payload[1] ) ; break ; 
+    // case 0x20: if(   notifySetOutput )   notifySetOutput( message.payload[0], message.payload[1] ) ; break ; 
+    // case 0x30: if(      notifySetPwm )      notifySetPwm( message.payload[0], message.payload[1] ) ; break ; 
+    // case 0x70: if( notifyServoConfig ) notifyServoConfig( message.payload[0], message.payload[1] ) ; break ;
+    // case 0x80: if(    notifySetServo )    notifySetServo( message.payload[0], message.payload[1] ) ; break ; 
     case 0x90: if(     notifySetData )     notifySetData( &message ) ; break ; // we send a pointer to the message object. The function can spoon out the raw data and do application stuff withit
     case 0x60: if(   notifyConfigPin )   notifyConfigPin( &message ) ; break ; 
     }
+}
+
+/**
+ * @brief For Master. Process received messages from slaves and analize
+ *  them for input updates. Every input message should be copied to the 
+ *  correspondig slave 
+ */
+void TSCbus::relayInputs( uint8 slaveID )
+{
+    if(notifyRelayInputs) notifyRelayInputs( &message, slaveID ) ;
 }
 
 

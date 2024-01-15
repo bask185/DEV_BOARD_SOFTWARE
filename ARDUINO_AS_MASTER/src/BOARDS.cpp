@@ -1,8 +1,7 @@
 #include "BOARDS.h"
 
 
-// NOTE, all all board info here?
-/*
+/* jack of all trade message
  0   uint8   PWM1 ;
  1   uint8   PWM2 ;
  2   uint8   PWM3 ;
@@ -14,12 +13,15 @@
  8   uint8   pot2LB ;
 */
 
-Message BOARD::getMessage() // make pointer or so
+Message* BOARD::getMessage() // make pointer or so
 {
-    return message ;
+    return &message ;
 }
 
-
+void BOARD::relayMessage( Message* newMes )
+{
+    message = *newMes ; // this update the payload of 
+}
 
 JACK_OF_ALL_TRADES::JACK_OF_ALL_TRADES()
 {
@@ -63,17 +65,17 @@ uint8 JACK_OF_ALL_TRADES::getPWM( uint8 index )           // can be called from 
     return 0 ;
 }
 
-uint8 ARDUINO_BOARD::ARDUINO_BOARD()
+ARDUINO_BOARD::ARDUINO_BOARD()
 {
 
 }
 void ARDUINO_BOARD::configurePins()
 {
     message.OPCODE = OPC_CONF_IO ; // may be done in the constructor
-    message.length ++ ;
+    message.length = 1 ;
 }
 
-uint8 ARDUINO_BOARD::pinMode( uint8 pin, uint8 mode )
+void ARDUINO_BOARD::pinMode( uint8 pin, uint8 mode )
 {
     message.payload[ message.length ++ ] =  pin ;
     message.payload[ message.length ++ ] = mode ;
@@ -84,7 +86,6 @@ uint8 ARDUINO_BOARD::getInput(  uint8 pin  )
 {
     // NOTE: if the pin is configured as input pin
     // updates will be received automatically
-
     // instead call back functions ae invoked to inform application code that an input is received.
     
 }
@@ -97,7 +98,7 @@ uint16 ARDUINO_BOARD::getAnalogInput(  uint8 pin )
 
 void ARDUINO_BOARD::setOutput( uint8 pin, uint8 val ) 
 {
-    message.OPCODE      = OPC_SET_OUTPUT ;
+    //message.OPCODE      = OPC_SET_OUTPUT ;
     message.payload[0]  = pin ;
     message.payload[1]  = val ;
 }
@@ -106,14 +107,14 @@ void ARDUINO_BOARD::setServo( uint8 pin, uint8 val )
 {
     val = constrain( val, 0 , 180 ) ;
 
-    message.OPCODE      = OPC_SET_SERVO ;
+    //message.OPCODE      = OPC_SET_SERVO ;
     message.payload[0]  = pin ;
     message.payload[1]  = val ;
 } 
 
 void ARDUINO_BOARD::setPWM( uint8 pin, uint8 val ) 
 {
-    message.OPCODE      = OPC_SET_PWM ;
+    //message.OPCODE      = OPC_SET_PWM ;
     message.payload[0]  = pin ;
     message.payload[1]  = val ;
 }
