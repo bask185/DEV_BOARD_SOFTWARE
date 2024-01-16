@@ -60,13 +60,13 @@ BOARD *board[] =
 
 TSCbus bus(MASTER) ;
 
-// copy from board object to bus handler
+// copy message from board object to bus handler
 void notifyloadMessage( Message *message, uint8 slaveIndex )
 {
     *message = *board[slaveIndex]->getMessage() ;
 }
 
-// copy from bus handler to board object
+// copy message from bus handler to board object
 void notifyRelayInputs( Message *message, uint8 slaveIndex )
 {
     board[slaveIndex]->relayMessage( message ) ;

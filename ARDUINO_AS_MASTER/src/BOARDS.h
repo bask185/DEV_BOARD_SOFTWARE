@@ -34,8 +34,8 @@ message payload;
 class BOARD
 {
 public:
-    Message* getMessage() ;
-    void relayMessage( Message* ) ;
+    // Message* getMessage() ; virtual needed?
+    // void relayMessage( Message* ) ; virtual needed?
     Message  message ; 
 
 private:
@@ -52,17 +52,33 @@ private:
 class DIGITAL_INPUT_BOARD: public BOARD
 {
 public:
-    /* constructor */
-    // add public messages to set and write to message payloads
+    DIGITAL_INPUT_BOARD() ;
+
+    void        relayMessage( Message* newMes )
+    Message*    getMessage() ;
+    
+    void        setConfig( uint8, uint8 ) ;
+    uint8       getInput( uint8 ) ;
+
 private:
+    uint16      inputs ;
+    uint16      configuration ;
+    uint8       updateDue = 0 ;
 };
 
+// <OPC_SET_OUTPUT> <DATA1> <DATA2> <CHECKSUM>
 class DIGITAL_OUTPUT_BOARD: public BOARD
 {
 public:
-    /* constructor */
-    // add public messages to set and write to message payloads
+    DIGITAL_OUTPUT_BOARD() ;
+
+    Message*    getMessage() ;
+    void        setOuput( uint8, uint8 ) ;
+    uint8       getOutput( uint8 ) ;
+
 private:
+    uint16      outputs ;
+    uint8       updateDue = 0 ;
 };
 
 class ANALOG_INPUT_BOARD: public BOARD
@@ -96,13 +112,18 @@ public:
     JACK_OF_ALL_TRADES() ;
 
     void    setServo( uint8, uint8 ) ; // set 'outputs' variable correctly
-    void    setRelay( uint8, uint8 ) ; // set 'outputs' variable correctly
-    
-    void    setPWM( uint8, uint8 ) ;   // called from package manager in order to update the value
-    uint8   getPWM( uint8 ) ;          // can be called from application to load the value and do something with it.
+    void    setRelay( uint8, uint8 ) ; // set 'outputs' variable correctly    
+    void    setPWM(   uint8, uint8 ) ;   // called from package manager in order to update the value
+
+    uint16  getADC( uint8 ) ;
+    uint8   getPWM(   uint8 ) ;
+    uint8   getRelay( uint8 ) ;
+    uint8   getServo( uint8 ) ;
 
 private:
-    
+    uint8   pwm[3] ;
+    uint16  adc[2] ;
+    uint8   outputs ; //SSSS RRRR
 } ;
 
 class ARDUINO_BOARD: public BOARD
@@ -119,7 +140,5 @@ public:
     void    setPWM(   uint8 pin, uint8 val ) ;
 
 private:
-    
-
     void getPin( uint8 pin ) ;
 } ;

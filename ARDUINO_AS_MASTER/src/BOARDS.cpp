@@ -2,68 +2,197 @@
 
 
 /* jack of all trade message
- 0   uint8   PWM1 ;
- 1   uint8   PWM2 ;
- 2   uint8   PWM3 ;
- 3   uint8   outputs ;
- 4   uint8   switches ;
- 5   uint8   pot1HB ;
- 6   uint8   pot1LB ;
- 7   uint8   pot2HB ;
- 8   uint8   pot2LB ;
-*/
+ OPC_SET_DATA
+ 0   size = 5 ;
+ 1   PWM1 ;
+ 2   PWM2 ;
+ 3   PWM3 ;
+ 4   outputs ;
+CHECKSUM
 
-Message* BOARD::getMessage() // make pointer or so
-{
-    return &message ;
-}
+OPC_GET_DATA
+ 0    size = 6 ;
+ 1    switches ;
+ 2    pot1HB ;
+ 3    pot1LB ;
+ 4    pot2HB ;
+ 5    pot2LB ;
+ CHECKSUM
+*/
 
 void BOARD::relayMessage( Message* newMes )
 {
-    message = *newMes ; // this update the payload of 
+    message = *newMes ; // this update the payload of an input board. It does however need to trigger a notification of some sort.
+                        // I think it is unavoidable to move this method to the sub-classes so the payload can be processed to the variables per board type directly
 }
+
+
 
 JACK_OF_ALL_TRADES::JACK_OF_ALL_TRADES()
 {
-    message.OPCODE = OPC_SET_DATA ;
-    message.length = 10 ; // 9 payload bytes + OPC
+}
+
+Message* JACK_OF_ALL_TRADES::getMessage() // N.B. may need to make a virtual functions in board class.
+                                            // also, may want to dump the function definitions in header file so I can eliminate the cpp file.
+{
+    if( message.OPCODE != OPC_SET_DATA ) // if no command is loaded yet, we will do input readout.
+    {
+        message.OPCODE = OPC_GET_DATA ;
+        message.payload[0] = 6 ;
+
+        for( int i = 1 ; i < 6 ; i ++ )
+        {
+            message.payload[i] = 0 ;    // inputs need zeroes
+        }
+    }
+    return &message ;
 }
 
 void  JACK_OF_ALL_TRADES::setServo( uint8 index, uint8 state )  // set 'outputs' variable correctly (may want to change indices to correspond with pinnumber instead?)
 {
     if( index > 3 ) return ;
 
-    if( state ) message.payload[3] |=  (1 << (7-index)) ;    // SSSSRRRR 
-    else        message.payload[3] &= ~(1 << (7-index)) ;
+    message.OPCODE  = OPC_SET_DATA ;
+    message.payload[0] = 5 ; // message length 
+
+    if( state ) message.payload[4] |=  (1 << (7-index)) ;    // SSSS RRRR 
+    else        message.payload[4] &= ~(1 << (7-index)) ;
 }
 
 void  JACK_OF_ALL_TRADES::setRelay( uint8 index, uint8 state )  // set 'outputs' variable (may want to change indices to correspond with pinnumber instead?)
 {
     if( index > 3 ) return ;
 
-    if( state ) message.payload[3] |=  (1 << (3-index)) ;    // SSSSRRRR 
-    else        message.payload[3] &= ~(1 << (3-index)) ;
+    message.OPCODE  = OPC_SET_DATA ;
+    message.payload[0] = 5 ; // message length 
+
+    if( state ) message.payload[4] |=  (1 << (3-index)) ;    // SSSS RRRR 
+    else        message.payload[4] &= ~(1 << (3-index)) ;
 }
 
 void  JACK_OF_ALL_TRADES::setPWM( uint8 index, uint8 val )    // called from package manager in order to update the value (may want to change indices to correspond with pinnumber instead?)
 {
     if( index > 2 ) return ;
+
+    message.OPCODE     = OPC_SET_DATA ;
+    message.payload[0] = 5 ; // message length 
     
-    if( index == 0 ) message.payload[0] = val ; 
-    if( index == 1 ) message.payload[1] = val ;
-    if( index == 2 ) message.payload[2] = val ;
+    message.payload[index+1] = val ; 
 }
 
-uint8 JACK_OF_ALL_TRADES::getPWM( uint8 index )           // can be called from application to load the value and do something with it.
+uint16 JACK_OF_ALL_TRADES::getADC( uint8 index )
 {
-    if( index > 2 ) return ;
+    if( index >= 2 ) return 0 ;
 
-    if( index == 0 ) return message.payload[0] ; 
-    if( index == 1 ) return message.payload[1] ; 
-    if( index == 2 ) return message.payload[2] ; 
-
-    return 0 ;
+    return adc[index] ;
 }
+
+uint8 JACK_OF_ALL_TRADES::getPWM( uint8 index )
+{
+    if( index >= 3 ) return 0 ;
+    return pwm[ index ] ;
+}
+
+uint8 JACK_OF_ALL_TRADES::getRelay( uint8 index ) // ssss RRRR 
+{
+    if( index >= 4 ) return 0 ; // N.B. may want to remap index numbers so they correspond with actual Pins
+
+    return (output >> index) & 1 ;
+}
+
+uint8 JACK_OF_ALL_TRADES::getServo( uint8 index )// SSSS rrrr 
+{
+    if( index >= 4 ) return 0 ; // N.B. may want to remap index numbers so they correspond with actual Pins
+
+    return (output >> (index+4)) & 1 ;
+}
+
+// <OPC_SET_OUTPUT> <DATA1> <DATA2> <CHECKSUM>
+DIGITAL_INPUT_BOARD::DIGITAL_INPUT_BOARD()
+{
+
+}
+
+void DIGITAL_INPUT_BOARD::relayMessage( Message* newMes )
+{
+    inputs = 0 ;
+    inputs |= (newMess -> payload[0]) << 8 ;
+    inputs |= (newMess -> payload[1]) ;
+}
+
+Message* DIGITAL_INPUT_BOARD::getMessage()
+{
+    if( updateDue ) 
+    {   updateDue = 0 ;
+
+        message.OPCODE     = OPC_CONF_IO ; // general configuration OPCODE
+        message.payload[0] = 3 ;           // length 3 or 4?
+        message.payload[1] = (configuration >> 8) & 0xFF ;
+        message.payload[2] =  configuration       & 0xFF ;
+    }
+    else
+    {
+        message.OPCODE     = OPC_GET_INPUTS ;
+        message.payload[0] = (inputs >> 8) & 0xFF ;
+        message.payload[1] =  inputs       & 0xFF ;
+    }
+
+    return &message ;
+}
+
+void DIGITAL_INPUT_BOARD::setConfig( uint8 index, uint8 state )
+{
+    updateDue = 1 ;
+
+    if( state ) configuration |=  (1<<index) ; 
+    else        configuration &= ~(1<<index) ;
+}
+
+uint8 DIGITAL_INPUT_BOARD::getInput( uint8 index )
+{
+    return (inputs >> index) & 1 ;
+}
+
+
+
+// <OPC_SET_OUTPUT> <DATA1> <DATA2> <CHECKSUM>
+DIGITAL_OUTPUT_BOARD::DIGITAL_OUTPUT_BOARD()
+{
+
+}
+
+Message* DIGITAL_OUTPUT_BOARD::getMessage()
+{
+    if( updateDue ) 
+    {   updateDue = 0 ;
+
+        message.payload[0] = (outputs >> 8) & 0xFF ;
+        message.payload[1] =  outputs       & 0xFF ;
+    }
+    else
+    {
+        message.OPCODE = OPC_IDLE ;
+    }
+
+    return &message ;
+}
+
+void DIGITAL_OUTPUT_BOARD::setOuput( uint8 index, uint8 state )
+{
+    updateDue = 1 ;
+    message.OPCODE = OPC_SET_OUTPUTS ;
+
+    if( state ) outputs |=  (1<<index) ; 
+    else        outputs &= ~(1<<index) ;
+}
+
+uint8 DIGITAL_OUTPUT_BOARD::getOutput( uint8 index )
+{
+    return (outputs >> index) & 1 ;
+}
+
+
+
 
 ARDUINO_BOARD::ARDUINO_BOARD()
 {

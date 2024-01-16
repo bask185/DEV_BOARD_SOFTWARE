@@ -50,6 +50,8 @@ const int OPC_GET_ENCODER       = 0xAD ; // 0b1 0101 101 length = 4x4 = 16 bytes
 const int OPC_GET_TYPE          = 0xB1 ; // 0b1 0110 001 length = 2 bytes       // respond with type number
 const int OPC_GET_STATUS        = 0xBA ; // 0b1 0111 010 length = 4 bytes       // respond with a status like, MISSED A CHECKSUM followed by which OPCODE went bad. Or more data..
 
+const int OPC_SET_OUTPUTS       = 0x41 ; // 0b0 1000 001 length = 2 bytes       // send 16 bits for outputs
+const int OPC_GET_INPUTS        = 0xC1 ; // 0b1 1000 001 length = 2 bytes       // respond 16 bits for inputs
 
 typedef struct Mess
 {
@@ -92,6 +94,7 @@ private:
     Message message ;
 };
 
+extern uint8    assembleChecksum( Message *message ) ;
 
 extern uint8    notifyGetPayload(  uint8, uint8     ) __attribute__ ((weak)) ;
 extern uint8    notifyGetBoardType( )                 __attribute__ ((weak)) ;

@@ -187,19 +187,9 @@ uint8 TSCbus::checkChecksum()
     return ( checksum == message.checksum ) ;
 }
 
-uint8 TSCbus::assembleChecksum()
+static uint8 calculateLength( Message * message )
 {
-    uint8 checksum = message.OPCODE ;
-    for( int i = 0 ; i < message.length ; i ++ )
-    {
-        checksum ^= message.payload[i] ;
-    }
-    return checksum ;
-}
-
-static uint8 calculateLength( uint8 OPCODE )
-{
-    switch( OPCODE & 0b111 )
+    switch( message->OPCODE & 0b111 )
     {
     case 000: return   1 ;
     case 001: return   2 ;
@@ -208,7 +198,7 @@ static uint8 calculateLength( uint8 OPCODE )
     case 100: return   8 ;
     case 101: return  16 ;
     case 110: return  20 ;
-    case 111: return 255 ; // 255 means follow byte is comming
+    case 111: return message->payload[0] ; // 255 means follow byte is comming
     }
 }
 
@@ -261,7 +251,7 @@ SIZE 0x6 110 = 20
 
     case loadMessage:
         if(notifyLoadMessage) notifyLoadMessage( &message, slaveCounter ) ; // load the message
-        length = calculateLength( message.OPCODE ) ;
+        length = F( message.OPCODE ) ; // if I pass a pointer to the function I can do the below line as well..
         if( length == 255 ) length = message.payload[0] ;
         byteCounter = 0 ;
         state  = sendMessage ;
@@ -342,7 +332,7 @@ void TSCbus::transceiveMessage()
             goto relayByte ;
         }
         // message is for me
-        message.OPCODE = b & 0xF0 ;
+        message.OPCODE = b & OPC_MASK ;
         
         if( length == 0x0F ) state = getLength ;   // if length is 16, the following byte will contain a new message length.
         else
@@ -383,7 +373,7 @@ void TSCbus::transceiveMessage()
         {
             if( meMode == SLAVE 
             &&( message.OPCODE & IS_INPUT == 0) ) processOutputs() ; // if I am slave and OPCODE is for OUTPUTS
-            
+
             state = wait4ID ; // This was the last opcode we had to process, we are finished
         }
         else 
@@ -430,3 +420,12 @@ void TSCbus::relayInputs( uint8 slaveID )
 }
 
 
+uint8 assembleChecksum( Message *message )
+{
+    uint8 checksum = message->OPCODE ;
+    for( int i = 0 ; i < message->length ; i ++ )
+    {
+        checksum ^= message->payload[i] ;
+    }
+    return checksum ;
+}
