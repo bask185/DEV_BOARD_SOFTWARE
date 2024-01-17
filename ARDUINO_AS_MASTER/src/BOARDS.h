@@ -34,27 +34,23 @@ message payload;
 class BOARD
 {
 public:
-    // Message* getMessage() ; virtual needed?
-    // void relayMessage( Message* ) ; virtual needed?
-    Message  message ; 
+    virtual Message* getMessage() = 0 ;          // virtual needed?
+    virtual void relayMessage( Message* ) = 0  ;  // virtual needed?
+
+    BOARD() ;
+
+    Message  message ; // not private?
 
 private:
 } ;
 
-class STEPPER_MOTOR_BOARD: public BOARD
-{
-public:
-    /* constructor */
-    // add public messages to set and write to message payloads
-private:
-};
 
 class DIGITAL_INPUT_BOARD: public BOARD
 {
 public:
     DIGITAL_INPUT_BOARD() ;
 
-    void        relayMessage( Message* newMes )
+    void        relayMessage( Message* newMes ) ;
     Message*    getMessage() ;
     
     void        setConfig( uint8, uint8 ) ;
@@ -72,7 +68,9 @@ class DIGITAL_OUTPUT_BOARD: public BOARD
 public:
     DIGITAL_OUTPUT_BOARD() ;
 
+    void        relayMessage( Message* newMes ) ;
     Message*    getMessage() ;
+
     void        setOuput( uint8, uint8 ) ;
     uint8       getOutput( uint8 ) ;
 
@@ -86,18 +84,53 @@ class ANALOG_INPUT_BOARD: public BOARD
 public:
     /* constructor */
     // add public messages to set and write to message payloads
+    ANALOG_INPUT_BOARD() ;
+
+    void        relayMessage( Message* newMes ) ;
+    Message*    getMessage() ;
+
+    uint16       getADC( uint8 ) ;
+
 private:
+    uint16      inputs[4] ;
 };
 
+// <OPC_SET_OUTPUT> <DATA1> <DATA2> <CHECKSUM>
 class ANALOG_OUTPUT_BOARD: public BOARD
 {
 public:
     /* constructor */
     // add public messages to set and write to message payloads
+    ANALOG_OUTPUT_BOARD() ;
+
+    void        relayMessage( Message* newMes ) ;
+    Message*    getMessage() ;
+
+    void        setDAC( uint8, uint16 ) ;
+
 private:
+    uint16      outputs[4] ;
+    uint8       updateDue = 0 ;
 };
 
+
 class ENCODER_BOARD: public BOARD
+{
+public:
+    /* constructor */
+    // add public messages to set and write to message payloads
+    ENCODER_BOARD() ;
+
+    void        relayMessage( Message* newMes ) ;
+    Message*    getMessage() ;
+
+    uint32      getEncoder( uint8 ) ;
+
+private:
+    uint32      encoder[4] ;      
+};
+
+class STEPPER_MOTOR_BOARD: public BOARD
 {
 public:
     /* constructor */
@@ -111,6 +144,9 @@ class JACK_OF_ALL_TRADES: public BOARD //
 public:
     JACK_OF_ALL_TRADES() ;
 
+    void        relayMessage( Message* newMes ) ;
+    Message*    getMessage() ;
+
     void    setServo( uint8, uint8 ) ; // set 'outputs' variable correctly
     void    setRelay( uint8, uint8 ) ; // set 'outputs' variable correctly    
     void    setPWM(   uint8, uint8 ) ;   // called from package manager in order to update the value
@@ -121,6 +157,7 @@ public:
     uint8   getServo( uint8 ) ;
 
 private:
+    uint8   updateDue ;
     uint8   pwm[3] ;
     uint16  adc[2] ;
     uint8   outputs ; //SSSS RRRR
@@ -130,6 +167,10 @@ class ARDUINO_BOARD: public BOARD
 {
 public:
     ARDUINO_BOARD() ;
+
+    void        relayMessage( Message* newMes ) ;
+    Message*    getMessage() ;
+    
     // note a manager should be used in order to update input pins on a regular basis
     void    configurePins() ; // may be done in the constructor?
     void    pinMode( uint8 pin, uint8 mode ) ;
@@ -142,3 +183,5 @@ public:
 private:
     void getPin( uint8 pin ) ;
 } ;
+
+

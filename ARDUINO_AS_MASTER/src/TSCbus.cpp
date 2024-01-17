@@ -146,6 +146,19 @@ TTTTTTTT = module type
 2 -> future use?
 */
   //   OPC    P0   P1    P2    P3    P4    P5    P6    P7   XOR |  OPC   13    12   XOR 
+
+
+uint8 assembleChecksum( Message *message )
+{
+    uint8 checksum = message->OPCODE ;
+    for( int i = 0 ; i < message->length ; i ++ )
+    {
+        checksum ^= message->payload[i] ;
+    }
+    return checksum ;
+}
+
+
 enum states
 {
     wait4ID,
@@ -251,7 +264,7 @@ SIZE 0x6 110 = 20
 
     case loadMessage:
         if(notifyLoadMessage) notifyLoadMessage( &message, slaveCounter ) ; // load the message
-        length = F( message.OPCODE ) ; // if I pass a pointer to the function I can do the below line as well..
+        length = calculateLength( message.OPCODE ) ; // if I pass a pointer to the function I can do the below line as well..
         if( length == 255 ) length = message.payload[0] ;
         byteCounter = 0 ;
         state  = sendMessage ;
@@ -264,7 +277,7 @@ SIZE 0x6 110 = 20
         return 0 ;
 
     case addChecksum:
-        message.checksum = assembleChecksum() ;
+        message.checksum = assembleChecksum( &message ) ;
         Serial.write( message.checksum ) ;
         state = pickNextMessage ;
         return 0 ;
@@ -356,7 +369,7 @@ void TSCbus::transceiveMessage()
     case processData:
         if( notifyGetPayload && (message.OPCODE & IS_INPUT) )  // for inputs OR input states on the byte
         {
-            b |= notifyGetPayload( message.OPCODE, index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
+            b = notifyGetPayload( message.OPCODE, index ) ; // if applicable get payload data from application such as inputs. NOTE. We may want to send OPC as well
         }
         message.payload[index] = b ;
 
@@ -394,7 +407,7 @@ void TSCbus::transceiveMessage()
  * Relevant payloads from message must be processed for outputs 
  * New payloads must be prepared for inputs.
  */
-void TSCbus::processOutputs()
+void TSCbus::processOutputs() // TODO update me with new opcodes
 {
     uint8 OPCODE = message.OPCODE & 0xF0 ;
 
@@ -417,15 +430,4 @@ void TSCbus::processOutputs()
 void TSCbus::relayInputs( uint8 slaveID )
 {
     if(notifyRelayInputs) notifyRelayInputs( &message, slaveID ) ;
-}
-
-
-uint8 assembleChecksum( Message *message )
-{
-    uint8 checksum = message->OPCODE ;
-    for( int i = 0 ; i < message->length ; i ++ )
-    {
-        checksum ^= message->payload[i] ;
-    }
-    return checksum ;
 }

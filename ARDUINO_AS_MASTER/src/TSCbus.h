@@ -27,11 +27,15 @@ SIZE 0x7 111 = size lays in next byte, can be up to 256
 IF OPCODE is ment for INPUTS. all payload bytes must be 0
 otherwise for outputs, the payload must be filled.
 
+
+NOTE. OPCODE LENGTHs are not yet correct. 
+length bits should not include opcode itself but payload length. This seems more logical to me
 */
 const int IS_INPUT              = 0x80 ; // mask to check if OPC is for input readout
 const int OPC_MASK              = 0xF8 ; // masks the first 5 bits for the OPCODE
 
-const int OPC_IDLE              = 0x00 ; // 0b0 0000 000
+// OPCODES
+const int OPC_IDLE              = 0x00 ; // 0b0 0000 000 0 length payload
 
 const int OPC_SET_DATA          = 0x0F ; // 0b0 0001 111  variable message length
 const int OPC_GET_DATA          = 0x8F ; // 0b1 0001 111  variable message length
@@ -41,7 +45,7 @@ const int OPC_CONF_IO           = 0x17 ; // 0b0 0010 111  variable message lengt
 const int OPC_SET_STEPPER       = 0x1D ; // 0b0 0011 101 length = 4x4 = 16 ;  positions -> send setpoints
 const int OPC_GET_STEPPER       = 0x9E ; // 0b1 0011 110 length = 5x4 = 20 ;  positions -> fetch current positions + status
 
-const int OPC_SET_DAC           = 0x24 ; // 0b0 0100 100 length = 4x2 = 8 bytes
+const int OPC_SET_DAC           = 0x24 ; // 0b0 0100 100 length = 4x2 = 8 bytes 
 const int OPC_GET_ADC           = 0xA4 ; // 0b1 0100 100 length = 4x2 = 8 bytes
 
 const int OPC_SET_ENCODER       = 0x2D ; // 0b0 0101 101 length = 4x4 = 16 bytes  load encoder value (if ever needed, it exists...)
@@ -60,8 +64,6 @@ typedef struct Mess
     uint8 OPCODE ;
     uint8 checksum ;
 } Message;
-
-
 
 
 class TSCbus
@@ -87,7 +89,6 @@ private:
     uint8   transmittBuffer[64] ;
 
     uint8   checkChecksum() ;
-    uint8   assembleChecksum() ;
     void    processOutputs() ;
     void    relayInputs( uint8 ) ;
 
